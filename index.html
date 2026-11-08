@@ -49,7 +49,7 @@ button:hover{background:#e3b878}
 </div>
 <div id="help">
   <b>WASD / 方向键</b> 移动　<b>1-4</b> 切换工具（锄头/水壶/种子/鱼竿）　<b>Q</b> 切换种子　<b>空格 / J</b> 使用工具、收获<br>
-  <b>E</b> 互动（房门睡觉 / 木箱出售 / 商店门购买 / 和阿鹿聊天）　<b>G</b> 送礼物给阿鹿　<b>M</b> 声音开关
+  <b>E</b> 互动（房门睡觉 / 木箱出售 / 商店门购买 / 和阿鹿聊天）　<b>G</b> 送礼物给阿鹿　<b>M</b> 声音开关　<b>对话</b> 空格 / 点击画面继续
   <button onclick="if(confirm('确定重新开始吗？存档会被清除。')){localStorage.removeItem('tinyvalley');location.reload()}">重新开始</button>
 </div>
 <script>
@@ -75,11 +75,11 @@ const LINES={
   3:['冬天地里种不了东西……去钓鱼吧。','好冷，我想喝热汤。','雪天真安静。']
 };
 
-function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{}}}
+function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{},story:{q1:0,q2:0,luluA:0}}}
 function load(){try{const s=localStorage.getItem('tinyvalley');return s?JSON.parse(s):null}catch(e){return null}}
 function save(){try{localStorage.setItem('tinyvalley',JSON.stringify(S))}catch(e){}}
 let S=load()||newState();
-{const d0=newState();for(const k in d0)if(S[k]===undefined)S[k]=d0[k];for(const k in d0.seeds)if(S.seeds[k]===undefined)S.seeds[k]=0}
+{const d0=newState();for(const k in d0)if(S[k]===undefined)S[k]=d0[k];for(const k in d0.seeds)if(S.seeds[k]===undefined)S.seeds[k]=0;for(const k in d0.story)if(S.story[k]===undefined)S.story[k]=d0.story[k]}
 
 const P={x:4.5*TS,y:4.5*TS,fx:0,fy:1,moving:false,anim:0,swing:0};
 const N={x:9*TS+16,y:5*TS+24,tx:9*TS+16,ty:5*TS+24,wait:1,dir:1};
@@ -92,6 +92,7 @@ function solid(x,y){
   if(x>=15&&x<=18&&y<=2)return true;
   if(x>=14&&x<=18&&y>=8&&y<=12)return true;
   if(x==5&&y==3)return true;
+  if(x==4&&y==3)return true;
   if(x>=15&&x<=16&&y>=13&&y<=14)return true;
   return TREES.some(t=>t[0]==x&&t[1]==y);
 }
@@ -117,6 +118,7 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
 function onPress(k){
+  if(dlg){if(k==' '||k=='j'||k=='e'||k=='enter')dlgAdvance();else if(k=='m'){S.muted=!S.muted;if(!S.muted)startAudio()}return}
   if(fade)return;
   if(shopOpen){if(k=='escape'||k=='e')closeShop();return}
   if(k>='1'&&k<='4'){tool=+k-1;if(fishing)fishing=null}
@@ -131,9 +133,11 @@ function onPress(k){
 function useTool(){
   if(fishing){
     if(fishing.st=='bite'){
-      let tot=FISH.reduce((a,f)=>a+f.w,0),r=Math.random()*tot,i=0;
-      for(;i<FISH.length;i++){r-=FISH[i].w;if(r<=0)break}
+      const ws=FISH.map(function(f,j){return j==3&&S.story.legend&&!S.story.key?4:f.w});
+      let tot=ws.reduce((a,b)=>a+b,0),r=Math.random()*tot,i=0;
+      for(;i<FISH.length;i++){r-=ws[i];if(r<=0)break}
       i=Math.min(i,FISH.length-1);
+      if(i==3&&S.story.legend&&!S.story.key){snd('catch');burst(fishing.tx*TS+16,fishing.ty*TS+16,'#ffe08a',16);fishing=null;keyEvent();return}
       addItem('f_'+i);msg('钓到了一条'+FISH[i].n+'！（$'+FISH[i].p+'）',3);
       snd('catch');burst(fishing.tx*TS+16,fishing.ty*TS+16,'#bfe6ff',12);floater(fishing.tx*TS+16,fishing.ty*TS,'+'+FISH[i].n);
     }else msg('收竿太早了……',2);
@@ -144,11 +148,11 @@ function useTool(){
   if(t&&t.c&&t.c.age>=CROPS[t.c.k].d){
     addItem('h_'+t.c.k);msg('收获了'+CROPS[t.c.k].n+'！',2);
     burst(tx*TS+16,ty*TS+12,'#fff59d',10);floater(tx*TS+16,ty*TS+4,'+'+CROPS[t.c.k].n);
-    t.c=null;S.ms.h=1;snd('harvest');checkMs();return;
+    t.c=null;S.ms.h=1;S.story.harv=(S.story.harv||0)+1;snd('harvest');checkMs();return;
   }
   if(S.energy<=0){msg('没力气了，去房门口睡觉吧（E）',3);return}
   if(tool==0){
-    if(!solid(tx,ty)&&!t&&!isPath(tx,ty)){S.tiles[key]={w:0,c:null};S.energy-=2;burst(tx*TS+16,ty*TS+20,'#8d6038',9);snd('till')}
+    if(!solid(tx,ty)&&!t&&!isPath(tx,ty)){S.tiles[key]={w:0,c:null};S.energy-=(S.story.hoe?1:2);burst(tx*TS+16,ty*TS+20,'#8d6038',9);snd('till')}
     else if(isPath(tx,ty))msg('石板路上不能翻土',1.5);
   }else if(tool==1){
     if(t){t.w=1;S.energy-=1;burst(tx*TS+16,ty*TS+16,'#7fc4ff',10);snd('water')}
@@ -166,7 +170,9 @@ function useTool(){
 }
 function interact(){
   if(npcNear()){talk();return}
+  const oo=nearOther();if(oo){if(oo.id=='mayor')talkMayor();else talkFisher();return}
   const[tx,ty]=target();
+  if(tx==4&&ty==3){chestInteract();return}
   if(tx==2&&ty==2){fade={t:0,passed:false,applied:false};msg('晚安……',2);snd('sleep');return}
   if(tx>=15&&tx<=16&&ty>=13&&ty<=14){coop();return}
   if(tx==5&&ty==3){sell();return}
@@ -187,13 +193,7 @@ function sell(){
   if(!n){msg('出货箱：背包里没有可卖的东西',2);return}
   S.gold+=tot;S.items={};floater(5*TS+16,3*TS,'+$'+tot);snd('coin');burst(5*TS+16,3*TS+10,'#ffd54f',12);msg('卖出 '+n+' 件，获得 $'+tot,3);
 }
-function talk(){
-  const ls=LINES[S.season];let l=ls[Math.random()*ls.length|0];
-  if(S.fr>=10)l='你是我最好的朋友！❤';
-  else if(S.fr>=5&&Math.random()<.5)l='和你聊天真开心！';
-  if(!S.talked){S.talked=true;S.fr=Math.min(10,S.fr+1)}
-  msg('阿鹿：'+l+'  (好感 '+S.fr+'/10)',4);snd('talk');checkMs();
-}
+function talk(){talkLulu()}
 function gift(){
   if(!npcNear())return;
   if(S.gifted){msg('阿鹿：今天已经收到礼物啦，谢谢！',2.5);return}
@@ -231,6 +231,7 @@ function endDay(passed){
   S.t=360;S.energy=passed?70:100;S.talked=false;S.gifted=false;
   S.eggs=Math.min(12,S.eggs+S.chickens);
   fishing=null;
+  if(S.season==2&&S.day==16)queueDlg(festivalScript());
   save();
   let m=S.day==1?('新的一季：'+SEASONS[S.season]+'季开始了！'):('第'+S.day+'天');
   if(wilted)m+='　有 '+wilted+' 株作物因换季枯萎了';
@@ -247,6 +248,12 @@ function update(dt){
     fade.t+=dt;
     if(!fade.applied&&fade.t>=0.8){fade.applied=true;endDay(fade.passed)}
     if(fade.t>=1.6)fade=null;
+    return;
+  }
+  if(!dlg&&DQ.length&&!shopOpen){startDlg(DQ.shift());return}
+  if(dlg){
+    const pg=dlg.pages[dlg.i];
+    if(dlg.shown<pg.t.length){dlg.shown+=dt*38;const n=dlg.shown|0;if(n!=dlg.last&&n%3==0){dlg.last=n;snd('tick')}}
     return;
   }
   if(shopOpen)return;
@@ -530,6 +537,7 @@ function drawBuildings(){
   ctx.drawImage(shopSprite(S.season),15*TS,0,128,96);
   text('杂货铺',544,30,'#5b3a1a',13,'center');
   ctx.drawImage(BIN,5*TS,3*TS,TS,TS);
+  ctx.drawImage(chestSpr(S.story.chest?1:0),4*TS,3*TS,TS,TS);
   ctx.drawImage(coopSprite(S.season),15*TS,13*TS,64,64);
   if(S.eggs>0){
     const b=Math.sin(performance.now()/250)*2;
@@ -552,6 +560,7 @@ function drawWorld(){
     }});
   }
   for(const c of CH)list.push({y:c.y,f:function(){drawChicken(c)}});
+  for(const o of OT)list.push({y:o.y,f:function(){drawOT(o)}});
   list.push({y:N.y,f:function(){
     ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(N.x,N.y+3,10,4,0,0,7);ctx.fill();
     ctx.drawImage(personFrame(NP,N.mv?(N.dir>0?3:2):0,N.mv,3),N.x-12,N.y-37,24,40);
@@ -602,7 +611,10 @@ function drawHUD(){
     else text(TOOLS[i],x+28,by+41,'#fff',11,'center');
   }
   const tg=target(),tx=tg[0],ty=tg[1];let hint='';
-  if(npcNear())hint='[E] 聊天   [G] 送礼';
+  if(dlg)hint='';
+  else if(npcNear())hint='[E] 聊天   [G] 送礼';
+  else if(nearOther())hint='[E] 和'+nearOther().name+'聊天';
+  else if(tx==4&&ty==3)hint='[E] 旧木箱';
   else if(tx==2&&ty==2)hint='[E] 睡觉';
   else if(tx==5&&ty==3)hint='[E] 出售背包里的东西';
   else if(tx==16&&ty==2)hint='[E] 进入商店';
@@ -616,7 +628,7 @@ function drawHUD(){
 }
 function draw(){
   ctx.imageSmoothingEnabled=false;
-  drawGround();drawPond();drawTiles();drawBuildings();
+  drawGround();drawPond();drawTiles();drawBuildings();drawFest();
   if(!shopOpen){
     const tg=target(),tx=tg[0],ty=tg[1],a=.55+Math.sin(performance.now()/200)*.25;
     ctx.strokeStyle='rgba(255,255,255,'+a+')';ctx.lineWidth=2;ctx.strokeRect(tx*TS+2,ty*TS+2,TS-4,TS-4);
@@ -650,10 +662,12 @@ function draw(){
   for(const f of floats){ctx.globalAlpha=Math.max(0,Math.min(1,f.l*1.5));text(f.s,f.x,f.y,'#fff7c2',14,'center')}
   ctx.globalAlpha=1;
   drawHUD();
+  drawObj();
   if(fade){
     const al=fade.t<.8?fade.t/.8:Math.max(0,(1.6-fade.t)/.8);
     ctx.fillStyle='rgba(0,0,0,'+al+')';ctx.fillRect(0,0,640,480);
   }
+  drawDlg();
 }
 
 /* ---------- 小鸡和鸡舍 ---------- */
@@ -703,14 +717,247 @@ function updateChickens(dt){
   }
 }
 
-/* ---------- 声音（Web Audio 合成，无需任何素材文件） ---------- */
-let AC=null,musicStep=0;
+/* ---------- 剧情 ---------- */
+let dlg=null;const DQ=[];
+function sv(){save()}
+function startDlg(d){
+  dlg={pages:d.lines.map(function(l){return typeof l=='string'?{n:d.name||'',t:l}:{n:l[0],t:l[1]}}),i:0,shown:0,last:-1,onEnd:d.onEnd||null};
+  snd('page');
+}
+function queueDlg(d){DQ.push(d)}
+function dlgAdvance(){
+  if(!dlg)return;
+  const p=dlg.pages[dlg.i];
+  if(dlg.shown<p.t.length){dlg.shown=p.t.length;return}
+  dlg.i++;dlg.shown=0;dlg.last=-1;
+  if(dlg.i>=dlg.pages.length){const f=dlg.onEnd;dlg=null;if(f)f()}
+  else snd('page');
+}
+cv.addEventListener('pointerdown',function(){if(dlg)dlgAdvance()});
+
+function isFest(){return S.season==2&&S.day==16}
+function festLeft(){let l=(2-S.season)*28+(16-S.day);if(l<0)l+=112;return l}
+function takeItem(k,n){S.items[k]=(S.items[k]||0)-n;if(S.items[k]<=0)delete S.items[k]}
+
+const MP=makePerson({skin:'#e8bf98',hair:'#d4d4d4',shirt:'#7a4a2a',shirtD:'#5a341c',pants:'#3a3a3a',shoe:'#3a2410',hat:'#5a4a7a',band:'#c9a24a'});
+const FP=makePerson({skin:'#d9a97c',hair:'#7a6a5a',shirt:'#3a7a8a',shirtD:'#2a5a68',pants:'#6a5a3a',shoe:'#3a2410',hat:'#e0c878',band:'#a88a3a'});
+const OT=[
+  {id:'mayor',name:'村长老陈',x:3*TS+16,y:5*TS+24,spr:MP},
+  {id:'fisher',name:'渔夫老周',x:13*TS+16,y:10*TS+24,spr:FP}
+];
+function nearOther(){for(const o of OT)if(Math.hypot(P.x-o.x,P.y-o.y)<46)return o;return null}
+function needsTalk(o){
+  const st=S.story;
+  if(o.id=='mayor')return st.q1==0||(st.q1==1&&(st.harv||0)>=3)||(st.q2==1&&(S.items.h_pumpkin||0)>=3);
+  return !st.legend;
+}
+function drawOT(o){
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(o.x,o.y+3,10,4,0,0,7);ctx.fill();
+  const dx=P.x-o.x,dy=P.y-o.y,di=Math.abs(dx)>Math.abs(dy)?(dx<0?2:3):(dy<0?1:0);
+  ctx.drawImage(o.spr[di][0],o.x-12,o.y-37,24,40);
+  if(Math.hypot(dx,dy)<46)text(o.name,o.x,o.y-44,'#fff7c2',11,'center');
+  else if(S.story.intro&&needsTalk(o))text('!',o.x,o.y-46+Math.sin(performance.now()/220)*2,'#ffeb3b',20,'center');
+}
+
+const chestC={};
+function chestSpr(open){
+  if(chestC[open])return chestC[open];
+  const k=cvs(16,16),g=k.getContext('2d'),R=mkR(g);
+  R(1,7,14,8,O_);R(2,8,12,6,'#a8703a');R(2,8,12,1,'#c98a4d');R(2,13,12,1,'#7a4a22');R(7,8,2,6,'#5a5a5a');
+  if(open){R(1,2,14,3,O_);R(2,3,12,1,'#b8793a');R(2,5,12,3,'#3a2414');R(4,6,8,1,'#ffd54f');R(6,5,4,1,'#fff59d')}
+  else{R(1,4,14,4,O_);R(2,5,12,2,'#b8793a');R(2,5,12,1,'#d09a55');R(7,4,2,4,'#5a5a5a');R(7,8,2,3,'#ffd54f');R(7,9,2,1,O_)}
+  chestC[open]=k;return k;
+}
+
+function talkMayor(){
+  const st=S.story,M='村长老陈';
+  if(isFest()){startDlg({name:M,lines:['今天是丰收祭！整个镇子都在庆祝。','别忘了尝尝阿鹿烤的饼干。']});return}
+  if(st.q1==0){
+    startDlg({name:M,lines:['啊，你就是老谷的孙辈吧？我是村长老陈，你爷爷是我六十年的老朋友。','农场荒了几年，别急，先从最简单的做起：用锄头翻地，播下萝卜种子，浇水，等它长大。','试着收获 3 次作物，然后回来找我，我给你准备了一点心意。'],onEnd:function(){st.q1=1;sv();snd('quest');msg('📜 新任务：收获 3 次作物',4.5)}});
+    return;
+  }
+  if(st.q1==1){
+    const h=st.harv||0;
+    if(h<3){startDlg({name:M,lines:['慢慢来，土地从不赶人。','你已经收获了 '+h+' 次，还差 '+(3-h)+' 次。']});return}
+    startDlg({name:M,lines:['哈哈，我就知道！你的手和你爷爷一样稳。','这是答应你的心意：一点钱，还有一些萝卜种子。','对了，还有件事。每年秋天的第 16 天，鹈鹕镇都会办“丰收祭”。','今年我想请你带 3 个南瓜来，大家都盼着南瓜派呢。','南瓜只在秋天种，要 6 天才熟，最晚秋天第 9 天就得种下去！'],onEnd:function(){S.gold+=150;S.seeds.turnip+=5;st.q1=2;st.q2=1;sv();snd('quest');msg('📜 任务完成 (+$150，萝卜种子×5)　新任务：为丰收祭准备 3 个南瓜',6)}});
+    return;
+  }
+  if(st.q2==1){
+    const have=S.items.h_pumpkin||0;
+    if(have>=3){
+      startDlg({name:M,lines:['南瓜！个个都这么圆润！','交给我吧，丰收祭那天，全镇的人都会尝到你的手艺。','先收下这点定金，节日当天还有好东西等着你。'],onEnd:function(){takeItem('h_pumpkin',3);S.gold+=200;st.q2=2;sv();snd('quest');msg('📜 南瓜已交付 (+$200)，等待丰收祭（秋 16 日）',5)}});
+      return;
+    }
+    startDlg({name:M,lines:['南瓜准备得怎么样了？我要 3 个，你现在有 '+have+' 个。','离丰收祭还有 '+festLeft()+' 天。南瓜 6 天才熟，别忘了在秋天第 9 天前种下去。']});
+    return;
+  }
+  if(st.q2==2&&!st.fest){startDlg({name:M,lines:['南瓜我收好啦，丰收祭见！']});return}
+  const a=['年轻人，农场越来越有样子了。','你爷爷要是看到，一定会偷偷笑的。','累了就去池塘边坐坐，老周总在那儿。','鹈鹕镇很小，但每个人都值得认识。'];
+  startDlg({name:M,lines:[a[Math.random()*a.length|0]]});
+}
+function talkFisher(){
+  const st=S.story,F='渔夫老周';
+  if(!st.legend){
+    startDlg({name:F,lines:['嘘……小声点，鱼会跑的。','你是老谷的孙辈？眼睛和他一模一样。','告诉你个秘密：很多年前，你爷爷往这池塘里放了一条金鱼。','他说那条鱼会替他记着一件重要的东西。我钓了四十年，也没钓到过它。','金鱼很难上钩，不过……耐心点，也许它愿意见你。'],onEnd:function(){st.legend=1;sv();snd('quest');msg('📜 新任务：在池塘钓到传说中的金鱼',5)}});
+    return;
+  }
+  if(!st.key){startDlg({name:F,lines:['看到浮漂抖了再收竿，别急。','金鱼出现的时候，你会知道的。']});return}
+  if(!st.chest){startDlg({name:F,lines:['那把钥匙……我认得，是老谷的。','他家门口有只旧木箱，一直没人打得开。去试试吧。']});return}
+  const a=[['今天鱼不太咬钩，不过这样坐着也挺好。'],['你爷爷当年总说，钓鱼钓的是时间。'],['冬天的池塘结了冰，鱼都躲到深处去了。'],['夏天傍晚来这儿，风是凉的。']];
+  startDlg({name:F,lines:a[Math.random()*a.length|0]});
+}
+function keyEvent(){
+  const st=S.story;
+  startDlg({name:'',lines:['金鱼在你手里轻轻摆了一下尾巴。','它的嘴里衔着一个小东西，是一把生锈的小铜钥匙，上面刻着一个“谷”字。','你把金鱼放回了池塘，它很快游远了。'],onEnd:function(){st.key=1;sv();snd('win');msg('🗝 获得了爷爷的钥匙！去家门口的旧木箱试试',5.5)}});
+}
+function chestInteract(){
+  const st=S.story;
+  if(st.chest){startDlg({name:'',lines:['箱子里空了，只剩下一股淡淡的木头和泥土的味道。']});return}
+  if(!st.key){startDlg({name:'',lines:['一只上了锁的旧木箱，盖子上刻着一个“谷”字。','锁孔很小，似乎需要一把特别的钥匙。']});return}
+  startDlg({name:'',lines:['钥匙轻轻一转，锁开了。','箱子里有一叠旧钞票、一把磨得发亮的锄头，还有一封信。'],onEnd:function(){
+    st.chest=1;S.gold+=500;st.hoe=1;sv();snd('win');msg('获得 $500 和爷爷的锄头（翻土更省力）',5);
+    queueDlg({name:'爷爷的信',lines:['孩子，如果你读到了这封信，说明你已经学会了耐心。','池塘、土地、四季，都要慢慢来。箱子里的钱不多，拿去买些种子吧。那把锄头我用了一辈子，它比你想的更听话。','还有一件事：镇上的阿鹿是个好姑娘，她替我保管着最后一页信。等你们成了朋友，她会交给你的。','——爷爷'],onEnd:function(){checkEnding()}});
+  }});
+}
+function talkLulu(){
+  const st=S.story,L='阿鹿';
+  if(!S.talked){S.talked=true;S.fr=Math.min(10,S.fr+1)}
+  if(S.fr>=10&&!st.luluB){
+    startDlg({name:L,lines:['你来啦。我有一样东西，一直想交给你。','这是你爷爷留给你的最后一页信。他说，等你和镇上的人成了朋友，再交给你。','我保管了很久……现在，终于可以给你了。'],onEnd:function(){
+      st.luluB=1;sv();snd('win');
+      queueDlg({name:'爷爷的信',lines:['亲爱的孩子，这是最后一页。','我这一辈子没走出过鹈鹕镇，却从不觉得孤单，因为土地、邻居和四季一直陪着我。','农场现在是你的了。种什么、怎么过，都由你自己决定。','偶尔抬头看看天吧。——爷爷'],onEnd:function(){checkEnding()}});
+    }});
+    return;
+  }
+  if(S.fr>=3&&!st.luluA){
+    startDlg({name:L,lines:['嗨！其实……我有个小梦想。','我想在镇上开一间小面包房，可是一直缺好的鸡蛋。','你有养鸡对吧？能帮我带 5 个鸡蛋吗？我想先试做一个蛋糕。','（还没有小鸡的话，可以去杂货铺买，每天都会下蛋。）'],onEnd:function(){st.luluA=1;sv();snd('quest');msg('📜 新任务：给阿鹿带 5 个鸡蛋',4.5)}});
+    return;
+  }
+  if(st.luluA==1){
+    const e=S.items.e_egg||0;
+    if(e<5){startDlg({name:L,lines:['鸡蛋还差一点哦，你现在有 '+e+' 个。','小鸡每天下一个蛋，到鸡舍旁边按互动就能收。']});return}
+    startDlg({name:L,lines:['哇，这么新鲜的鸡蛋！','等我一下……好了！蛋糕的第一块，给你。','太好吃了对不对？谢谢你，我觉得离梦想近了一点。'],onEnd:function(){takeItem('e_egg',5);S.gold+=300;S.fr=Math.min(10,S.fr+2);st.luluA=2;sv();snd('quest');msg('📜 任务完成 (+$300，好感 +2)',4.5);checkMs()}});
+    return;
+  }
+  const ls=LINES[S.season];let l=ls[Math.random()*ls.length|0];
+  if(S.fr>=10)l='你是我最好的朋友！❤';
+  else if(S.fr>=5&&Math.random()<.5)l='和你聊天真开心！';
+  msg('阿鹿：'+l+'  (好感 '+S.fr+'/10)',4);snd('talk');checkMs();
+}
+function festivalScript(){
+  const st=S.story;
+  if(st.fest){
+    S.gold+=100;
+    return{name:'村长老陈',lines:['丰收祭又到啦！广场上全是笑声和烤南瓜的香味。','来，这是今年的小红包，新的一年也要好好种地。（+$100）']};
+  }
+  if(st.q2==2){
+    st.fest=1;S.gold+=600;S.fr=Math.min(10,S.fr+2);
+    return{name:'',lines:[['','清晨，广场上挂满了彩旗，空气里飘着烤南瓜的香味。'],['村长老陈','各位！今年的南瓜，是新来的农夫亲手种出来的！'],['阿鹿','哇，南瓜派好香！我偷偷多吃了一块……'],['村长老陈','老谷要是在，一定会端着杯子第一个站起来。来，这是大家凑的一点心意。'],['','你收下了 $600 的礼金，阿鹿笑着朝你挥了挥手。（好感 +2）']],onEnd:function(){sv();snd('win');msg('🏆 丰收祭圆满！+$600',5);checkMs();checkEnding()}};
+  }
+  st.fest=2;st.q2=3;
+  return{name:'',lines:[['','今天是丰收祭，广场上挂满了彩旗。'],['村长老陈','南瓜没赶上也没关系，节日本来就是大家一起过的。'],['村长老陈','明年再来，我给你留个好位置。']],onEnd:function(){sv();checkEnding()}};
+}
+function checkEnding(){
+  const st=S.story;
+  if(st.chest&&st.luluB&&st.fest&&!st.end){
+    st.end=1;sv();
+    queueDlg({name:'',lines:['春去秋来，农场的田垄一天比一天绿。','池塘边多了渔竿，广场上多了笑声，鹈鹕镇的灯一盏一盏亮了起来。','爷爷留下的三样东西：耐心、善意，还有池塘里的秘密，你都找到了。','—— 第一章  完 ——','故事暂时告一段落，农场还是你的，想怎么经营都可以。'],onEnd:function(){snd('win');msg('🏆 完成主线剧情！',5)}});
+  }
+}
+function objectives(){
+  const st=S.story,o=[];
+  if(!st.intro)return o;
+  if(st.q1==0)o.push('和村长老陈聊聊（家旁边）');
+  if(st.q1==1)o.push('收获作物 '+Math.min(3,st.harv||0)+'/3，再找村长');
+  if(st.q2==1)o.push('丰收祭：交 3 个南瓜 ('+Math.min(3,S.items.h_pumpkin||0)+'/3)，剩 '+festLeft()+' 天');
+  if(st.q2==2&&!st.fest)o.push('等待丰收祭（秋 16 日，剩 '+festLeft()+' 天）');
+  if(!st.legend)o.push('去池塘边找渔夫老周聊聊');
+  else if(!st.key)o.push('在池塘钓到传说中的金鱼');
+  else if(!st.chest)o.push('用钥匙打开家门口的旧木箱');
+  if(st.luluA==1)o.push('给阿鹿带 5 个鸡蛋 ('+Math.min(5,S.items.e_egg||0)+'/5)');
+  else if(!st.luluB)o.push('和阿鹿成为好朋友 ('+S.fr+'/10)');
+  if(st.end&&!o.length)o.push('故事告一段落，自由经营农场吧');
+  return o.slice(0,3);
+}
+function drawObj(){
+  const o=objectives();if(!o.length||dlg)return;
+  ctx.font='12px system-ui,"Microsoft YaHei",sans-serif';
+  let w=0;for(const s of o)w=Math.max(w,ctx.measureText(s).width);
+  w=Math.min(322,w+34);
+  panel(186,8,w,16+o.length*17);
+  o.forEach(function(s,i){text('📜 '+s,194,26+i*17,'#ffe9b5',12)});
+}
+function drawFest(){
+  if(!isFest())return;
+  const cols=['#e53935','#ffd54f','#43a047','#42a5f5','#ab47bc'];
+  ctx.strokeStyle='#5b3a1a';ctx.lineWidth=1.5;ctx.beginPath();
+  for(let i=0;i<=30;i++){const t=i/30,x=130+t*350,y=50+Math.sin(Math.PI*t)*16;if(i==0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}
+  ctx.stroke();
+  for(let i=0;i<14;i++){
+    const t=(i+.5)/14,x=130+t*350,y=50+Math.sin(Math.PI*t)*16;
+    ctx.fillStyle=cols[i%5];ctx.beginPath();ctx.moveTo(x-7,y);ctx.lineTo(x+7,y);ctx.lineTo(x,y+14);ctx.closePath();ctx.fill();
+  }
+}
+function wrapText(s,maxW){
+  ctx.font='16px system-ui,"Microsoft YaHei",sans-serif';
+  const out=[];let cur='';
+  for(const ch of s){
+    if(ctx.measureText(cur+ch).width>maxW&&cur){out.push(cur);cur=ch}else cur+=ch;
+  }
+  if(cur)out.push(cur);
+  return out;
+}
+function drawDlg(){
+  if(!dlg)return;
+  const p=dlg.pages[dlg.i],bx=24,by=334,bw=592,bh=130,letter=p.n=='爷爷的信';
+  ctx.fillStyle=letter?'#f4e4be':'#261609';ctx.fillRect(bx,by,bw,bh);
+  ctx.strokeStyle=letter?'#a8803f':'#c99a5b';ctx.lineWidth=3;ctx.strokeRect(bx+1.5,by+1.5,bw-3,bh-3);
+  ctx.strokeStyle=letter?'rgba(120,80,30,.35)':'rgba(255,224,160,.25)';ctx.lineWidth=1;ctx.strokeRect(bx+6.5,by+6.5,bw-13,bh-13);
+  if(p.n){
+    ctx.font='14px system-ui,"Microsoft YaHei",sans-serif';
+    const tw=ctx.measureText(p.n).width+26;
+    ctx.fillStyle=letter?'#a8803f':'#c99a5b';ctx.fillRect(bx+16,by-13,tw,26);
+    text(p.n,bx+16+tw/2,by+5,letter?'#fff4dc':'#2b1a0a',14,'center');
+  }
+  const lines=wrapText(p.t,bw-48);
+  let rem=dlg.shown|0;
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i];
+    text(ln.slice(0,Math.max(0,rem)),bx+24,by+42+i*24,letter?'#4a2f14':'#fff4dc',16);
+    rem-=ln.length;
+  }
+  if(dlg.shown>=p.t.length){
+    if(Math.sin(performance.now()/200)>0)text('▼',bx+bw-26,by+bh-14,letter?'#8a6a3a':'#ffe066',14,'center');
+  }
+  text('空格 / 点击 继续',bx+bw-44,by+bh-14,letter?'rgba(90,60,20,.55)':'rgba(255,240,210,.4)',11,'right');
+}
+
+/* ---------- 小鸡和鸡舍之后：声音与音乐（Web Audio 合成，无需任何素材文件） ---------- */
+let AC=null,BUS=null,NOISE=null,AMB=null;
+const MUS={step:0,next:0,sd:.3,ph:null,m:null};
 function startAudio(){
   try{
-    if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;AC=new C();setInterval(musicTick,520)}
+    if(!AC){
+      const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
+      AC=new C();
+      BUS=AC.createGain();BUS.gain.value=.9;
+      const dly=AC.createDelay(1),fb=AC.createGain(),lp=AC.createBiquadFilter(),wet=AC.createGain();
+      dly.delayTime.value=.32;fb.gain.value=.32;lp.type='lowpass';lp.frequency.value=2200;wet.gain.value=.35;
+      BUS.connect(AC.destination);BUS.connect(dly);dly.connect(lp);lp.connect(fb);fb.connect(dly);lp.connect(wet);wet.connect(AC.destination);
+      const len=AC.sampleRate*2,buf=AC.createBuffer(1,len,AC.sampleRate),d=buf.getChannelData(0);
+      for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+      NOISE=buf;
+      const src=AC.createBufferSource();src.buffer=NOISE;src.loop=true;
+      const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=1500;
+      const g=AC.createGain();g.gain.value=0;
+      src.connect(f);f.connect(g);g.connect(AC.destination);src.start();
+      AMB={g:g,f:f};
+      setInterval(musicLoop,90);
+    }
     if(AC.state=='suspended')AC.resume();
   }catch(e){}
 }
+function mf(m){return 440*Math.pow(2,(m-69)/12)}
 function tone(f,dur,type,vol,delay,f2){
   if(!AC||S.muted||AC.state!='running')return;
   const t=AC.currentTime+(delay||0),o=AC.createOscillator(),g=AC.createGain();
@@ -733,19 +980,115 @@ function snd(n){
       case 'talk':tone(440,.06,'triangle',.05);tone(560,.08,'triangle',.05,.06);break;
       case 'sleep':[330,262,196].forEach(function(f,i){tone(f,.5,'sine',.06,i*.25)});break;
       case 'win':[523,659,784,1047].forEach(function(f,i){tone(f,.2,'square',.05,i*.1)});break;
+      case 'quest':[659,784,988,1319].forEach(function(f,i){tone(f,.35,'triangle',.06,i*.09)});break;
+      case 'page':tone(520,.05,'sine',.035);break;
+      case 'tick':tone(700+Math.random()*90,.025,'square',.01);break;
     }
   }catch(e){}
 }
-const SCALES=[[0,2,4,7,9],[0,2,4,7,9],[0,3,5,7,10],[0,2,7,9]];
-function musicTick(){
-  if(!AC||S.muted||AC.state!='running'||document.hidden)return;
-  musicStep++;
-  const sc=SCALES[S.season],base=220;
-  if(musicStep%8==0)tone(base/2*Math.pow(2,sc[((musicStep/8)|0)%sc.length]/12),1.6,'sine',.04);
-  if(musicStep%2==0&&Math.random()<(S.season==3?.5:.7)){
-    const n=sc[(Math.random()*sc.length)|0],oct=Math.random()<.3?2:1;
-    tone(base*oct*Math.pow(2,n/12),.9,'triangle',.03);
+function note(m,t,dur,type,vol,atk){
+  if(!AC||S.muted)return;
+  atk=atk||.01;const end=t+Math.max(dur,atk+.05);
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type=type;o.frequency.value=mf(m);
+  g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+atk);g.gain.exponentialRampToValueAtTime(.0001,end);
+  o.connect(g);g.connect(BUS);o.start(t);o.stop(end+.05);
+}
+function kick(t,v){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.frequency.setValueAtTime(130,t);o.frequency.exponentialRampToValueAtTime(42,t+.12);
+  g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.18);
+  o.connect(g);g.connect(BUS);o.start(t);o.stop(t+.2);
+}
+function hat(t,v){
+  const s=AC.createBufferSource();s.buffer=NOISE;
+  const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=7000;
+  const g=AC.createGain();g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.0001,t+.05);
+  s.connect(f);f.connect(g);g.connect(BUS);s.start(t,Math.random(),.08);
+}
+function chirp(t){
+  const f=2400+Math.random()*900;
+  for(let i=0;i<2;i++){
+    const a=t+i*.11,o=AC.createOscillator(),g=AC.createGain();
+    o.frequency.setValueAtTime(f,a);o.frequency.exponentialRampToValueAtTime(f*1.35,a+.07);
+    g.gain.setValueAtTime(.0001,a);g.gain.linearRampToValueAtTime(.015,a+.01);g.gain.exponentialRampToValueAtTime(.0001,a+.09);
+    o.connect(g);g.connect(BUS);o.start(a);o.stop(a+.1);
   }
+}
+const THEMES=[
+  {key:60,prog:[[0,'M'],[9,'m'],[5,'M'],[7,'M']],sc:[0,2,4,7,9],bpm:96},
+  {key:55,prog:[[0,'M'],[7,'M'],[9,'m'],[5,'M']],sc:[0,2,4,7,9],bpm:104},
+  {key:57,prog:[[0,'m'],[8,'M'],[3,'M'],[10,'M']],sc:[0,3,5,7,10],bpm:84},
+  {key:62,prog:[[0,'m'],[10,'M'],[8,'M'],[10,'M']],sc:[0,3,5,7,10],bpm:70}
+];
+const FESTTHEME={key:62,prog:[[0,'M'],[7,'M'],[9,'m'],[5,'M']],sc:[0,2,4,7,9],bpm:122};
+function mood(){
+  const night=S.t>=1080||S.t<400,fest=isFest(),th=fest?FESTTHEME:THEMES[S.season];
+  return{key:th.key,prog:th.prog,sc:th.sc,bpm:th.bpm*(night?.8:1),night:night,fest:fest,rain:S.weather==1,snow:S.weather==2,
+    perc:fest||(S.season==1&&!night&&S.weather==0),season:S.season,id:(fest?'f':S.season)+(night?'n':'d')};
+}
+function genPhrase(m){
+  const pool=[];for(let o=0;o<2;o++)for(const d of m.sc)pool.push(d+12*o);
+  const rhy=[[1,0,1,1,0,1,0,0],[1,0,0,1,1,0,1,0],[1,0,1,0,1,0,0,0],[1,0,0,0,1,1,0,1],[1,1,0,1,0,0,1,0],[1,0,1,0,0,1,1,0]];
+  const ph=[];let idx=3+(Math.random()*3|0);
+  const steps=[-2,-1,-1,0,1,1,2];
+  for(let b=0;b<4;b++){
+    const r=rhy[Math.random()*rhy.length|0],bar=new Array(8).fill(null),on=[];
+    for(let i=0;i<8;i++)if(r[i])on.push(i);
+    for(let k=0;k<on.length;k++){
+      idx+=steps[Math.random()*steps.length|0];idx=Math.max(1,Math.min(9,idx));
+      if(b==3&&k==on.length-1)idx=Math.random()<.5?0:5;
+      const next=k+1<on.length?on[k+1]:8;
+      bar[on[k]]={n:pool[idx],d:Math.min(4,next-on[k])};
+    }
+    ph.push(bar);
+  }
+  MUS.ph=ph;
+}
+function schedStep(t){
+  const s=MUS.step++,pos=s%8,bar=(s/8)|0;
+  if(pos==0||!MUS.m){
+    MUS.m=mood();
+    if(bar%8==0||!MUS.ph||MUS.lastId!=MUS.m.id){genPhrase(MUS.m)}
+    MUS.lastId=MUS.m.id;
+  }
+  const m=MUS.m,sd=60/m.bpm/2;MUS.sd=sd;
+  if(pos==0&&AMB){
+    const tgt=m.rain?.05:m.snow?.025:0;
+    AMB.g.gain.setTargetAtTime(S.muted?0:tgt,AC.currentTime,.6);AMB.f.frequency.value=m.rain?2400:500;
+  }
+  if(S.muted)return;
+  const ch=m.prog[bar%4],cr=m.key+ch[0],iv=ch[1]=='M'?[0,4,7]:[0,3,7],barLen=sd*8,v=m.night?.7:1;
+  if(pos==0){
+    for(const i of iv){note(cr+i,t,barLen*1.05,'sine',.022*v,.35);note(cr+i+12,t,barLen,'triangle',.008*v,.5)}
+    note(cr-12,t,sd*3.5,'triangle',.07*v,.02);
+  }
+  if(pos==4)note(cr-5,t,sd*3,'triangle',.05*v,.02);
+  if(m.night){
+    if(pos==0||pos==3||pos==6)note(cr+12+iv[(pos/3|0)%3],t,sd*3,'sine',.03,.01);
+  }else{
+    const a=[0,1,2,1,0,1,2,1][pos];
+    note(cr+12+iv[a]+(pos%4==2?12:0),t,sd*2,'triangle',.028,.005);
+  }
+  const ev=MUS.ph[bar%4][pos];
+  if(ev&&!(m.rain&&Math.random()<.5)&&!(bar%8>=4&&Math.random()<.12)){
+    const n=m.key+12+ev.n,dur=sd*ev.d*.95,lv=m.night?.7:1;
+    note(n,t,dur,'triangle',.05*lv,.01);
+    note(n+12,t,dur*.6,'sine',.012*lv,.005);
+  }
+  if(m.perc){
+    if(pos==0||pos==4)kick(t,.09);
+    if(pos%2==1)hat(t,.02);
+    if(m.fest&&(pos==2||pos==6))hat(t,.03);
+  }
+  if(!m.night&&S.weather==0&&S.season<2&&pos==3&&Math.random()<.06)chirp(t);
+}
+function musicLoop(){
+  if(!AC||AC.state!='running')return;
+  if(MUS.next<AC.currentTime)MUS.next=AC.currentTime+.05;
+  if(typeof document!=='undefined'&&document.hidden){MUS.next=AC.currentTime+.2;return}
+  let guard=0;
+  while(MUS.next<AC.currentTime+.4&&guard++<8){schedStep(MUS.next);MUS.next+=MUS.sd}
 }
 ['keydown','pointerdown'].forEach(function(ev){addEventListener(ev,startAudio)});
 
@@ -769,7 +1112,9 @@ function loop(now){
   update(dt);draw();
   requestAnimationFrame(loop);
 }
-msg('欢迎来到小谷农场！用 1-4 选工具，空格使用。先翻土再种萝卜吧',6);
+if(!S.story.intro){
+  startDlg({name:'爷爷的信',lines:['亲爱的孩子：','当你读到这封信，我大概已经去很远的地方钓鱼了。','农场不大，但它陪了我一辈子。我在这里留下了三样东西：一份给土地的耐心，一份给邻居的善意，还有一个藏在池塘里的秘密。','去吧，慢慢来，不着急。','——爷爷'],onEnd:function(){S.story.intro=1;sv();msg('村长老陈就在家旁边，走近后按 E 和他打个招呼吧',6)}});
+}else msg('欢迎回来！',3);
 requestAnimationFrame(loop);
 </script>
 </body>
