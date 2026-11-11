@@ -43,17 +43,19 @@ button:hover{background:#e3b878}
   </div>
   <div class="act">
     <div class="tb"><button data-t="1">⛏</button><button data-t="2">💧</button><button data-t="3">🌱</button><button data-t="4">🎣</button></div>
-    <div class="tb"><button class="sm" data-p="q">换种</button><button class="sm" data-p="g">送礼</button><button class="sm" data-p="e">互动</button><button class="sm" data-p="m">声音</button></div>
+    <div class="tb"><button class="sm" data-p="q">换种</button><button class="sm" data-p="g">送礼</button><button class="sm" data-p="e">互动</button><button class="sm" data-p="m">声音</button><button class="sm" data-p="n">地图</button></div>
     <button class="use" data-p=" ">使用</button>
   </div>
 </div>
 <div id="help">
   <b>WASD / 方向键</b> 移动　<b>1-4</b> 切换工具（锄头/水壶/种子/鱼竿）　<b>Q</b> 切换种子　<b>空格 / J</b> 使用工具、收获<br>
-  <b>E</b> 互动（房门睡觉 / 木箱出售 / 商店门购买 / 和阿鹿聊天）　<b>G</b> 送礼物给阿鹿　<b>M</b> 声音开关　<b>对话</b> 空格 / 点击画面继续　<b>矿洞</b> 家左下角的山洞，空格挥镐
+  <b>E</b> 互动（房门睡觉 / 木箱出售 / 商店门购买 / 和阿鹿聊天）　<b>G</b> 送礼物给阿鹿　<b>M</b> 声音开关　<b>N</b> 小地图（小/大/隐藏）　<b>对话</b> 空格 / 点击画面继续　<b>矿洞</b> 家左下角的山洞，空格挥镐
   <button onclick="if(confirm('确定重新开始吗？存档会被清除。')){localStorage.removeItem('tinyvalley');location.reload()}">重新开始</button>
 </div>
 <script>
 const W=20,H=15,TS=32;
+const WW=40,WH=28;               // 农场世界大小（格）；W/H 仍是矿洞和旧画面大小
+const CAM={x:0,y:0};
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const shopEl=document.getElementById('shop');
 const SEASONS=['春','夏','秋','冬'];
@@ -65,7 +67,21 @@ const CROPS={
 };
 const SEEDKEYS=Object.keys(CROPS);
 const FISH=[{n:'鲫鱼',p:40,w:4},{n:'鲤鱼',p:70,w:3},{n:'鲈鱼',p:110,w:2},{n:'金鱼',p:160,w:1}];
+const LAKE={x:27,y:18,w:6,h:5};
 const TREES=[[8,1],[9,1],[12,2],[0,7],[0,8],[19,5],[1,13],[12,14],[18,14],[13,6]];
+(function(){
+  const have={};TREES.forEach(function(t){have[t[0]+','+t[1]]=1});
+  const h2=function(x,y,k){return hash(x*7+k,y*13+k*3)};
+  for(let y=0;y<WH;y++)for(let x=0;x<WW;x++){
+    if(x<20&&y<15)continue;                       // 旧村庄区域保持不变
+    if(have[x+','+y])continue;
+    if(x>=LAKE.x-1&&x<=LAKE.x+LAKE.w&&y>=LAKE.y-1&&y<=LAKE.y+LAKE.h)continue;
+    if(y==4||(x==26&&y>=4&&y<=17))continue; // 小路留空
+    const edge=x>=WW-2||y>=WH-2,edge2=x>=WW-4||y>=WH-4;
+    let r=h2(x,y,1);
+    if(edge?r<.9:edge2?r<.35:(x>=26&&y>=15&&r<.07)||(r<.04))TREES.push([x,y]);
+  }
+})();
 const TOOLS=['锄头','水壶','种子','鱼竿'];
 const TOOLICON=['⛏','💧','🌱','🎣'];
 const LINES={
@@ -75,38 +91,43 @@ const LINES={
   3:['冬天地里种不了东西……去钓鱼吧。','好冷，我想喝热汤。','雪天真安静。']
 };
 
-function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{},story:{q1:0,q2:0,luluA:0},hp:100,gear:{sword:0,pick:0},mine:{best:0}}}
+function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{},story:{q1:0,q2:0,luluA:0},hp:100,gear:{sword:0,pick:0},mine:{best:0,boss:{}},cows:0,sheep:0,pigs:0,goats:0,ducks:0,pout:{},forage:[],pets:[],hay:0,fedN:0,milk:0,wool:0,love:{who:null,state:0,wed:0},bouquet:0,ring:0,rel:{lulu:{ev:{}},chuan:{fr:0,talked:false,gifted:false,ev:{},met:false}}}}
 function load(){try{const s=localStorage.getItem('tinyvalley');return s?JSON.parse(s):null}catch(e){return null}}
 function save(){try{localStorage.setItem('tinyvalley',JSON.stringify(S))}catch(e){}}
 let S=load()||newState();
-{const d0=newState();for(const k in d0)if(S[k]===undefined)S[k]=d0[k];for(const k in d0.seeds)if(S.seeds[k]===undefined)S.seeds[k]=0;for(const k in d0.story)if(S.story[k]===undefined)S.story[k]=d0.story[k];for(const k in d0.gear)if(S.gear[k]===undefined)S.gear[k]=d0.gear[k]}
+{const d0=newState();for(const k in d0)if(S[k]===undefined)S[k]=d0[k];for(const k in d0.seeds)if(S.seeds[k]===undefined)S.seeds[k]=0;for(const k in d0.story)if(S.story[k]===undefined)S.story[k]=d0.story[k];for(const k in d0.gear)if(S.gear[k]===undefined)S.gear[k]=d0.gear[k];for(const k in S.tiles){const q=k.split(',').map(Number);if((q[0]>=3&&q[0]<=5&&q[1]>=13)||(q[0]>=1&&q[0]<=3&&q[1]>=9&&q[1]<=10))delete S.tiles[k]}}
 
 const P={x:4.5*TS,y:4.5*TS,fx:0,fy:1,moving:false,anim:0,swing:0};
 const N={x:9*TS+16,y:5*TS+24,tx:9*TS+16,ty:5*TS+24,wait:1,dir:1};
+let mapMode=1;   // 小地图：0 隐藏 1 小 2 大
+try{const mm=localStorage.getItem('tinyvalley_map');if(mm!==null)mapMode=+mm||0}catch(e){}
 let tool=0,selSeed=0,fishing=null,fade=null,shopOpen=false,msgText='',msgT=0;
 
 function msg(t,s=3){msgText=t;msgT=s}
 function solid(x,y){
   if(MINE.on)return mineSolid(x,y);
-  if(x<0||y<0||x>=W||y>=H)return true;
+  if(x<0||y<0||x>=WW||y>=WH)return true;
+  if(x>=LAKE.x&&x<LAKE.x+LAKE.w&&y>=LAKE.y&&y<LAKE.y+LAKE.h)return true;
   if(x>=1&&x<=3&&y<=2)return true;
   if(x>=15&&x<=18&&y<=2)return true;
   if(x>=14&&x<=18&&y>=8&&y<=12)return true;
   if(x==5&&y==3)return true;
   if(x==4&&y==3)return true;
   if(x>=1&&x<=3&&y>=9&&y<=10)return true;
+  if(x>=3&&x<=5&&y>=13&&y<=14)return true;
   if(x>=15&&x<=16&&y>=13&&y<=14)return true;
   return TREES.some(t=>t[0]==x&&t[1]==y);
 }
-function isWater(x,y){return x>=14&&x<=18&&y>=8&&y<=12}
+function isWater(x,y){return (x>=14&&x<=18&&y>=8&&y<=12)||(x>=LAKE.x&&x<LAKE.x+LAKE.w&&y>=LAKE.y&&y<LAKE.y+LAKE.h)}
 function blocked(px,py){
   const x0=Math.floor((px-9)/TS),x1=Math.floor((px+9)/TS),y0=Math.floor((py-6)/TS),y1=Math.floor((py+6)/TS);
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(solid(x,y))return true;
   return false;
 }
 function target(){return[Math.floor(P.x/TS)+P.fx,Math.floor(P.y/TS)+P.fy]}
-function itemName(k){return k[0]=='h'?CROPS[k.slice(2)].n:k[0]=='e'?'鸡蛋':k[0]=='o'?ORES[k.slice(2)].n:k[0]=='s'?'史莱姆凝胶':FISH[+k.slice(2)].n}
-function itemPrice(k){return k[0]=='h'?CROPS[k.slice(2)].sell:k[0]=='e'?35:k[0]=='o'?ORES[k.slice(2)].p:k[0]=='s'?20:FISH[+k.slice(2)].p}
+const ITEMX={m_mush:['蘑菇',45],m_berry:['野莓',30],m_milk:['牛奶',100],m_wool:['羊毛',140],m_truffle:['松露',220],m_gmilk:['山羊奶',170],m_duck:['鸭蛋',70]};
+function itemName(k){return k[0]=='h'?CROPS[k.slice(2)].n:k[0]=='e'?'鸡蛋':k[0]=='o'?ORES[k.slice(2)].n:k[0]=='s'?'史莱姆凝胶':k[0]=='m'?ITEMX[k][0]:FISH[+k.slice(2)].n}
+function itemPrice(k){return k[0]=='h'?CROPS[k.slice(2)].sell:k[0]=='e'?35:k[0]=='o'?ORES[k.slice(2)].p:k[0]=='s'?20:k[0]=='m'?ITEMX[k][1]:FISH[+k.slice(2)].p}
 function addItem(k){S.items[k]=(S.items[k]||0)+1}
 function npcNear(){return !MINE.on&&Math.hypot(P.x-N.x,P.y-N.y)<46}
 
@@ -128,6 +149,7 @@ function onPress(k){
   else if(k==' '||k=='j')useTool();
   else if(k=='e')interact();
   else if(k=='g')gift();
+  else if(k=='n')toggleMap();
   else if(k=='m'){S.muted=!S.muted;msg(S.muted?'声音已关闭':'声音已开启',1.5);if(!S.muted)startAudio()}
 }
 
@@ -174,12 +196,16 @@ function useTool(){
 function interact(){
   if(MINE.on){mineInteract();return}
   if(npcNear()){talk();return}
+  if(nearC()){talkChuan();return}
+  const an=nearAnimal();if(an){petAnimal(an);return}
   const oo=nearOther();if(oo){if(oo.id=='mayor')talkMayor();else talkFisher();return}
   const[tx,ty]=target();
+  const fg=forageAt(tx,ty);if(fg){pickForage(fg);return}
   if(tx==4&&ty==3){chestInteract();return}
   if(tx>=1&&tx<=3&&ty>=9&&ty<=10){openMineMenu();return}
   if(tx==2&&ty==2){fade={t:0,passed:false,applied:false};msg('晚安……',2);snd('sleep');return}
   if(tx>=15&&tx<=16&&ty>=13&&ty<=14){coop();return}
+  if(tx>=3&&tx<=5&&ty>=13&&ty<=14){barn();return}
   if(tx==5&&ty==3){sell();return}
   if(tx==16&&ty==2){shopOpen=true;renderShop();shopEl.style.display='block';return}
 }
@@ -189,7 +215,7 @@ function coop(){
   else msg('今天的鸡蛋已经收完了（共 '+S.chickens+' 只小鸡）',2.5);
 }
 function checkMs(){
-  const list=[['harvest',S.ms.h,'第一次收获！你已经是个农夫了'],['g1000',S.gold>=1000,'金币突破 $1000，农场开始赚钱了'],['chick',S.chickens>=1,'你养了第一只小鸡'],['fr10',S.fr>=10,'你和阿鹿成了最好的朋友'],['g5000',S.gold>=5000,'金币突破 $5000，农场大亨！']];
+  const list=[['harvest',S.ms.h,'第一次收获！你已经是个农夫了'],['g1000',S.gold>=1000,'金币突破 $1000，农场开始赚钱了'],['chick',S.chickens>=1,'你养了第一只小鸡'],['fr10',S.fr>=10,'你和阿鹿成了最好的朋友'],['g5000',S.gold>=5000,'金币突破 $5000，农场大亨！'],['barn',totAnimals()>=1,'牲畜棚里有了第一只牲畜'],['date',S.love.state>=1,'你开始了一段恋爱 💕'],['wed',S.love.state>=3,'你结婚了！祝福你们 💒'],['pet5',S.pets&&S.pets.some(function(p){return p.fr>=100}),'有一只牲畜和你成了最好的朋友 🐮'],['boss',!!(S.mine.boss&&S.mine.boss[10]),'你击败了矿洞里的史莱姆王']];
   for(const m of list)if(m[1]&&!S.ms[m[0]]){S.ms[m[0]]=1;msg('🏆 '+m[2],4.5);snd('win');break}
 }
 function sell(){
@@ -199,15 +225,6 @@ function sell(){
   S.gold+=tot;S.items={};floater(5*TS+16,3*TS,'+$'+tot);snd('coin');burst(5*TS+16,3*TS+10,'#ffd54f',12);msg('卖出 '+n+' 件，获得 $'+tot,3);
 }
 function talk(){talkLulu()}
-function gift(){
-  if(!npcNear())return;
-  if(S.gifted){msg('阿鹿：今天已经收到礼物啦，谢谢！',2.5);return}
-  const k=Object.keys(S.items).find(k=>S.items[k]>0);
-  if(!k){msg('背包里没有可以送的东西',2);return}
-  S.items[k]--;if(!S.items[k])delete S.items[k];
-  S.gifted=true;S.fr=Math.min(10,S.fr+2);
-  msg('你送了一个'+itemName(k)+'。阿鹿很开心！(好感 '+S.fr+'/10)',3.5);snd('talk');checkMs();
-}
 function renderShop(){
   let h='<h2>🏪 杂货铺</h2><div>金币：$'+S.gold+'</div>';
   for(const k of SEEDKEYS){
@@ -215,6 +232,10 @@ function renderShop(){
     h+=`<div class="row"><span>${c.n}种子 · $${c.seed}（持有 ${S.seeds[k]}）<br><small>${c.s.map(i=>SEASONS[i]).join('/')}季 · ${c.d}天成熟 · 售价 $${c.sell}</small></span><button onclick="buy('${k}')">购买</button></div>`;
   }
   h+=`<div class="row"><span>小鸡 · $150（${S.chickens}/4）<br><small>每天下一个蛋，到鸡舍收取 · 鸡蛋 $35</small></span><button onclick="buy('chicken')">购买</button></div>`;
+  for(const t of ATYPES){const a=ANI[t];h+=`<div class="row"><span>${a.n} · $${a.price}（${cntOf(t)}/${a.max}）<br><small>${a.desc} · 每天吃 1 份干草</small></span><button onclick="buy('${t}')">购买</button></div>`}
+  h+=`<div class="row"><span>干草 ×5 · $50（持有 ${S.hay}）<br><small>到左下角牲畜棚按互动喂食</small></span><button onclick="buy('hay')">购买</button></div>`;
+  h+=`<div class="row"><span>💐 花束 · $200（持有 ${S.bouquet}）<br><small>好感 8 以上，送给心上人表白</small></span><button onclick="buy('bouquet')">购买</button></div>`;
+  h+=`<div class="row"><span>💍 订婚戒指 · $2000（持有 ${S.ring}）<br><small>交往后好感 10，用来求婚</small></span><button onclick="buy('ring')">购买</button></div>`;
   for(const g of['sword','pick']){
     const lv=S.gear[g],nm=(g=='sword'?SWORD:PICK),up=UPCOST[lv];
     if(up)h+=`<div class="row"><span>${nm[lv]} → ${nm[lv+1]}<br><small>$${up[0]} + ${ORES[up[1]].n}×${up[2]}（持有 ${S.items['o_'+up[1]]||0}）</small></span><button onclick="buy('up_${g}')">升级</button></div>`;
@@ -224,6 +245,14 @@ function renderShop(){
   shopEl.innerHTML=h;
 }
 function buy(k){
+  if(k=='bouquet'){if(S.gold>=200&&S.bouquet<9){S.gold-=200;S.bouquet++;snd('buy');renderShop()}return}
+  if(k=='ring'){if(S.gold>=2000&&S.ring<3){S.gold-=2000;S.ring++;snd('buy');renderShop()}return}
+  if(ANI[k]){
+    const a=ANI[k];
+    if(cntOf(k)<a.max&&S.gold>=a.price){S.gold-=a.price;S[a.key]++;snd(a.sound);checkMs();sv();renderShop()}
+    return;
+  }
+  if(k=='hay'){if(S.gold>=50&&S.hay<=55){S.gold-=50;S.hay+=5;snd('buy');renderShop()}return}
   if(k=='up_sword'||k=='up_pick'){
     const g=k.slice(3),lv=S.gear[g],up=UPCOST[lv];
     if(!up||S.gold<up[0]||(S.items['o_'+up[1]]||0)<up[2]){msg('金币或矿石不够',2);return}
@@ -246,6 +275,15 @@ function endDay(passed){
   if(S.weather==1)for(const k in S.tiles)S.tiles[k].w=1;
   S.t=360;S.energy=passed?70:100;S.talked=false;S.gifted=false;
   S.eggs=Math.min(12,S.eggs+S.chickens);
+  livestockDay();
+  spawnForage();
+  S.rel.chuan.talked=false;S.rel.chuan.gifted=false;
+  let spouseMsg='';
+  if(S.love.state==3){
+    if(S.love.who=='lulu'){S.gold+=120;spouseMsg='　阿鹿的面包房送来了 $120'}
+    else{for(const k in S.tiles)S.tiles[k].w=1;spouseMsg='　阿川把田里的作物都浇好了'}
+  }
+  if(S.love.state==2){S.love.wed--;if(S.love.wed<=0){S.love.state=3;queueDlg(weddingScript(S.love.who))}}
   S.hp=100;
   if(MINE.on){MINE.on=false;P.x=2*TS+16;P.y=3.5*TS+8;P.fx=0;P.fy=1}
   fishing=null;
@@ -254,14 +292,14 @@ function endDay(passed){
   let m=S.day==1?('新的一季：'+SEASONS[S.season]+'季开始了！'):('第'+S.day+'天');
   if(wilted)m+='　有 '+wilted+' 株作物因换季枯萎了';
   else if(S.weather==1)m+='　今天下雨，作物自动浇水';
-  msg(m,4);
+  msg(m+spouseMsg,4);
 }
 
 /* ---------- 更新 ---------- */
 function update(dt){
   if(msgT>0)msgT-=dt;
   if(P.swing>0)P.swing-=dt;
-  updateFx(dt);updateChickens(dt);
+  updateFx(dt);updateChickens(dt);updateAnimals(dt);
   if(fade){
     fade.t+=dt;
     if(!fade.applied&&fade.t>=0.8){fade.applied=true;endDay(fade.passed)}
@@ -299,18 +337,7 @@ function update(dt){
   }
   if(MINE.on)updateMine(dt);
   // NPC
-  const dx=N.tx-N.x,dy=N.ty-N.y,d=Math.hypot(dx,dy);
-  N.mv=d>1;
-  if(d>1){const s=Math.min(40*dt,d);N.x+=dx/d*s;N.y+=dy/d*s;if(Math.abs(dx)>1)N.dir=dx>0?1:-1}
-  else{
-    N.wait-=dt;
-    if(N.wait<=0){
-      N.wait=1.5+Math.random()*3;
-      const o=[[1,0],[-1,0],[0,1],[0,-1]][Math.random()*4|0];
-      const nx=Math.floor(N.x/TS)+o[0],ny=Math.floor(N.y/TS)+o[1];
-      if(nx>=6&&nx<=13&&ny>=3&&ny<=6&&!solid(nx,ny)&&!S.tiles[nx+','+ny]){N.tx=nx*TS+16;N.ty=ny*TS+24}
-    }
-  }
+  if(!MINE.on){wander(N,boxOf('lulu'),dt);wander(C,boxOf('chuan'),dt)}
 }
 
 /* ---------- 绘制 ---------- */
@@ -511,15 +538,17 @@ function updateFx(dt){
 }
 
 /* 场景绘制 */
-function isPath(x,y){return(x==2&&y==3)||(x==16&&y==3)||(y==4&&x>=2&&x<=16)}
+function isPath(x,y){return(x==2&&y==3)||(x==16&&y==3)||(y==4&&x>=2&&x<=WW-3)||(x==26&&y>=4&&y<=17)}
 function drawGround(){
-  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const x0=Math.max(0,Math.floor(CAM.x/TS)),x1=Math.min(WW-1,Math.ceil((CAM.x+640)/TS)),y0=Math.max(0,Math.floor(CAM.y/TS)),y1=Math.min(WH-1,Math.ceil((CAM.y+480)/TS));
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
     if(isPath(x,y))ctx.drawImage(pathTile((hash(x,y)*4)|0),x*TS,y*TS,TS,TS);
     else ctx.drawImage(grassTile(S.season,(hash(x,y)*8)|0),x*TS,y*TS,TS,TS);
   }
 }
-function drawPond(){
-  const x0=14*TS,y0=8*TS,w=5*TS,h=5*TS,t=performance.now()/1000,win=S.season==3;
+function drawPond(){drawPondAt(14*TS,8*TS,5*TS,5*TS,[[30,40],[110,90],[80,25]],true);drawPondAt(LAKE.x*TS,LAKE.y*TS,LAKE.w*TS,LAKE.h*TS,[[40,50],[130,100],[100,30],[60,110]],false)}
+function drawPondAt(x0,y0,w,h,lils,flower){
+  const t=performance.now()/1000,win=S.season==3;
   rr(x0-6,y0-6,w+12,h+12,win?'#c2d0d8':'#bda86d');rr(x0-4,y0-4,w+8,h+8,win?'#dfe8ee':'#d8c48a');
   const base=win?'#9fd0ec':'#3a86c8',deep=win?'#8cc3e4':'#2f74b0',light=win?'#e8f6ff':'#6db4e8';
   rr(x0,y0,w,h,base);
@@ -529,11 +558,11 @@ function drawPond(){
     if(!win&&hh>.3&&Math.sin(t*1.6+hh*20+i*.6)>.7)rr(x0+i*8+1,y0+j*8+3,6,2,light);
   }
   if(!win){
-    for(const p of[[30,40],[110,90],[80,25]]){
+    for(const p of lils){
       ctx.fillStyle='#3f9a3a';ctx.beginPath();ctx.ellipse(x0+p[0],y0+p[1],9,6,0,0,7);ctx.fill();
       rr(x0+p[0]+2,y0+p[1]-6,6,6,base);
     }
-    circ(x0+30,y0+40,2.5,'#ff8fb1');circ(x0+30,y0+40,1,'#fff7c2');
+    if(flower){circ(x0+30,y0+40,2.5,'#ff8fb1');circ(x0+30,y0+40,1,'#fff7c2')}
   }
 }
 function drawTiles(){
@@ -551,6 +580,49 @@ function drawTiles(){
     }
   }
 }
+/* ---------- 野外采集 ---------- */
+const FORSPR={};
+(function(){
+  let k=cvs(16,16),g=k.getContext('2d'),R=mkR(g);
+  R(5,8,6,5,O_);R(6,9,4,3,'#e8e0d0');R(3,5,10,5,O_);R(4,5,8,4,'#d24a3a');R(5,6,2,1,'#fff');R(9,7,2,1,'#fff');
+  FORSPR.m_mush=k;
+  k=cvs(16,16);g=k.getContext('2d');R=mkR(g);
+  R(2,5,12,9,O_);R(3,6,10,7,'#3f8a3a');R(4,7,8,5,'#4aa044');
+  R(5,8,2,2,'#c2305a');R(9,7,2,2,'#c2305a');R(8,11,2,2,'#c2305a');R(5,8,1,1,'#ff8fb1');R(9,7,1,1,'#ff8fb1');
+  FORSPR.m_berry=k;
+})();
+function forageAt(x,y){if(!S.forage)return null;return S.forage.find(function(f){return f.x==x&&f.y==y})||null}
+let REACH=null;
+function reachable(){
+  if(REACH)return REACH;
+  REACH=new Set(['16,5']);const q=[[16,5]];
+  while(q.length){const c=q.pop();for(const d of[[1,0],[-1,0],[0,1],[0,-1]]){const x=c[0]+d[0],y=c[1]+d[1],k=x+','+y;if(REACH.has(k)||solid(x,y))continue;REACH.add(k);q.push([x,y])}}
+  return REACH;
+}
+function spawnForage(){
+  S.forage=[];
+  const n=S.season==3?5:12;
+  for(let i=0;i<n*6&&S.forage.length<n;i++){
+    const x=20+Math.floor(Math.random()*(WW-22)),y=2+Math.floor(Math.random()*(WH-4));
+    if(solid(x,y)||!reachable().has(x+','+y)||isPath(x,y)||S.tiles[x+','+y]||forageAt(x,y))continue;
+    S.forage.push({x:x,y:y,k:S.season==2||S.season==3||Math.random()<.4?'m_mush':'m_berry'});
+  }
+}
+function pickForage(f){
+  S.forage=S.forage.filter(function(g){return g!==f});
+  S.items[f.k]=(S.items[f.k]||0)+1;
+  floater(f.x*TS+16,f.y*TS,'+'+ITEMX[f.k][0]);burst(f.x*TS+16,f.y*TS+16,'#fff59d',6);snd('harvest');
+  checkMs();
+}
+function drawForage(){
+  if(!S.forage)return;
+  const t=performance.now()/1000;
+  for(const f of S.forage){
+    if(f.x*TS+TS<CAM.x||f.x*TS>CAM.x+640||f.y*TS+TS<CAM.y||f.y*TS>CAM.y+480)continue;
+    ctx.drawImage(FORSPR[f.k],f.x*TS,f.y*TS,TS,TS);
+    if(Math.sin(t*3+f.x*1.7+f.y)>.93){rr(f.x*TS+22,f.y*TS+5,3,3,'#fff59d')}
+  }
+}
 function drawBuildings(){
   ctx.drawImage(houseSprite(S.season),TS,0,96,96);
   ctx.drawImage(shopSprite(S.season),15*TS,0,128,96);
@@ -558,6 +630,7 @@ function drawBuildings(){
   ctx.drawImage(BIN,5*TS,3*TS,TS,TS);
   ctx.drawImage(chestSpr(S.story.chest?1:0),4*TS,3*TS,TS,TS);
   ctx.drawImage(MINEENT,1*TS,9*TS,96,64);
+  drawBarn();
   ctx.drawImage(coopSprite(S.season),15*TS,13*TS,64,64);
   if(S.eggs>0){
     const b=Math.sin(performance.now()/250)*2;
@@ -581,10 +654,21 @@ function drawWorld(){
   }
   for(const c of CH)list.push({y:c.y,f:function(){drawChicken(c)}});
   for(const o of OT)list.push({y:o.y,f:function(){drawOT(o)}});
+  for(const a of AN)list.push({y:a.y,f:function(){drawAnimal(a)}});
   list.push({y:N.y,f:function(){
     ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(N.x,N.y+3,10,4,0,0,7);ctx.fill();
     ctx.drawImage(personFrame(NP,N.mv?(N.dir>0?3:2):0,N.mv,3),N.x-12,N.y-37,24,40);
   }});
+  list.push({y:N.y+1,f:function(){if(npcNear())text('阿鹿',N.x,N.y-44,'#fff7c2',11,'center')}});
+  list.push({y:C.y,f:function(){
+    ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(C.x,C.y+3,10,4,0,0,7);ctx.fill();
+    ctx.drawImage(personFrame(CP,C.mv?(C.dir>0?3:2):0,C.mv,5),C.x-12,C.y-37,24,40);
+    if(nearC())text('阿川',C.x,C.y-44,'#fff7c2',11,'center');
+  }});
+  if(S.love.state>0){
+    const lt=S.love.who=='lulu'?N:C;
+    list.push({y:lt.y+2,f:function(){text('♥',lt.x,lt.y-(nearC()||npcNear()?58:46)+Math.sin(performance.now()/300)*2,'#ff6b9d',16,'center')}});
+  }
   list.push({y:P.y,f:function(){
     ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(P.x,P.y+3,10,4,0,0,7);ctx.fill();
     const di=P.fy>0?0:P.fy<0?1:P.fx<0?2:3;
@@ -603,6 +687,41 @@ function drawSmoke(){
     const t=((now*.35+i/4)%1),x=110+Math.sin(t*6+i)*4,y=14-t*40;
     ctx.fillStyle='rgba(240,240,240,'+((1-t)*.55)+')';ctx.beginPath();ctx.arc(x,y,3+t*5,0,7);ctx.fill();
   }
+}
+const MINIC={};
+function miniBase(){
+  if(MINIC[S.season])return MINIC[S.season];
+  const k=cvs(WW,WH),g=k.getContext('2d'),R=mkR(g);
+  const grass=['#6fb552','#5aa845','#b08a3a','#dfe8ee'][S.season],tree=['#2f7a3a','#2a6f34','#9a4a1a','#8aa0a8'][S.season];
+  const tset={};for(const t of TREES)tset[t[0]+','+t[1]]=1;
+  for(let y=0;y<WH;y++)for(let x=0;x<WW;x++){
+    let c=grass;
+    if(isPath(x,y))c='#d8c08a';
+    else if(isWater(x,y))c=S.season==3?'#a8d4ee':'#3a86c8';
+    else if(tset[x+','+y])c=tree;
+    else if(solid(x,y))c='#a8553f';
+    R(x,y,1,1,c);
+  }
+  MINIC[S.season]=k;return k;
+}
+function toggleMap(){
+  mapMode=(mapMode+1)%3;
+  try{localStorage.setItem('tinyvalley_map',String(mapMode))}catch(e){}
+  msg(['小地图：隐藏','小地图：小','小地图：大'][mapMode],1.5);
+}
+function drawMini(){
+  if(!mapMode||MINE.on)return;
+  const z=mapMode==2?4:2,w=WW*z,h=WH*z,x0=8,y0=480-8-h;
+  ctx.fillStyle='rgba(30,18,8,.85)';ctx.fillRect(x0-3,y0-3,w+6,h+6);
+  ctx.strokeStyle='#8a6a3a';ctx.lineWidth=2;ctx.strokeRect(x0-2,y0-2,w+4,h+4);
+  ctx.globalAlpha=.92;ctx.drawImage(miniBase(),0,0,WW,WH,x0,y0,w,h);ctx.globalAlpha=1;
+  for(const k in S.tiles){const q=k.split(',');ctx.fillStyle=S.tiles[k].c?'#c8e04a':'#7a5230';ctx.fillRect(x0+q[0]*z,y0+q[1]*z,z,z)}
+  if(S.forage)for(const f of S.forage){ctx.fillStyle='#ffe066';ctx.fillRect(x0+f.x*z,y0+f.y*z,z,z)}
+  const dot=function(px,py,c,r){const dx=x0+px/TS*z,dy=y0+py/TS*z;ctx.fillStyle='#000';ctx.fillRect(dx-r-1,dy-r-1,2*r+2,2*r+2);ctx.fillStyle=c;ctx.fillRect(dx-r,dy-r,2*r,2*r)};
+  dot(N.x,N.y,'#ff8fb1',z>2?2:1);dot(C.x,C.y,'#6ad06a',z>2?2:1);
+  ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=1;
+  ctx.strokeRect(x0+CAM.x/TS*z+.5,y0+CAM.y/TS*z+.5,640/TS*z-1,480/TS*z-1);
+  if(((performance.now()/350)|0)%2==0)dot(P.x,P.y,'#ffffff',z>2?3:2);else dot(P.x,P.y,'#e53935',z>2?3:2);
 }
 function drawHUD(){
   const h=Math.floor(S.t/60)%24,m=Math.floor(S.t%60/10)*10;
@@ -630,16 +749,21 @@ function drawHUD(){
     if(i==2){const k=SEEDKEYS[selSeed];text(CROPS[k].n+'×'+S.seeds[k],x+28,by+41,'#fff',11,'center')}
     else text(TOOLS[i],x+28,by+41,'#fff',11,'center');
   }
+  drawMini();
   const tg=target(),tx=tg[0],ty=tg[1];let hint='';
   if(dlg)hint='';
   else if(MINE.on)hint=mineHint();
   else if(npcNear())hint='[E] 聊天   [G] 送礼';
+  else if(nearC())hint='[E] 和阿川聊天   [G] 送礼';
+  else if(nearAnimal()){const a=nearAnimal();hint='[E] 摸摸'+a.pet.name+(a.pet.pet?'（今天摸过了）':'')}
   else if(nearOther())hint='[E] 和'+nearOther().name+'聊天';
+  else if(forageAt(tx,ty))hint='[E] 采集 '+ITEMX[forageAt(tx,ty).k][0];
   else if(tx==4&&ty==3)hint='[E] 旧木箱';
   else if(tx>=1&&tx<=3&&ty>=9&&ty<=10)hint='[E] 进入矿洞';
   else if(tx==2&&ty==2)hint='[E] 睡觉';
   else if(tx==5&&ty==3)hint='[E] 出售背包里的东西';
   else if(tx==16&&ty==2)hint='[E] 进入商店';
+  else if(tx>=3&&tx<=5&&ty>=13&&ty<=14)hint='[E] 牲畜棚'+(prodTotal()>0?'（收 '+prodTotal()+' 件产品）':'')
   else if(tx>=15&&tx<=16&&ty>=13&&ty<=14)hint='[E] 鸡舍'+(S.eggs>0?'（收 '+S.eggs+' 个蛋）':'');
   if(hint&&!shopOpen){panel(320-90,84,180,24);text(hint,320,101,'#fff',13,'center')}
   if(msgT>0&&msgText){
@@ -648,10 +772,16 @@ function drawHUD(){
     panel(320-w/2,480-96,w,30);text(msgText,320,480-76,'#fff',14,'center');
   }
 }
+function updateCam(){
+  CAM.x=Math.max(0,Math.min(WW*TS-640,P.x-320));
+  CAM.y=Math.max(0,Math.min(WH*TS-480,P.y-250));
+}
 function draw(){
   ctx.imageSmoothingEnabled=false;
   if(MINE.on){drawMineFrame();return}
-  drawGround();drawPond();drawTiles();drawBuildings();drawFest();
+  updateCam();
+  ctx.save();ctx.translate(-Math.round(CAM.x),-Math.round(CAM.y));
+  drawGround();drawPond();drawTiles();drawBuildings();drawForage();drawFest();
   if(!shopOpen){
     const tg=target(),tx=tg[0],ty=tg[1],a=.55+Math.sin(performance.now()/200)*.25;
     ctx.strokeStyle='rgba(255,255,255,'+a+')';ctx.lineWidth=2;ctx.strokeRect(tx*TS+2,ty*TS+2,TS-4,TS-4);
@@ -666,10 +796,13 @@ function draw(){
   drawSmoke();
   const night=Math.max(0,Math.min(1,(S.t-1080)/480));
   const a=night*.55+(S.weather==1?.15:0);
+  ctx.restore();
   if(a>0){ctx.fillStyle='rgba(20,20,70,'+a+')';ctx.fillRect(0,0,640,480)}
   if(night>.15){
+    ctx.save();ctx.translate(-Math.round(CAM.x),-Math.round(CAM.y));
     ctx.fillStyle='rgba(255,224,138,'+Math.min(.9,night*1.2)+')';
     ctx.fillRect(46,66,16,16);ctx.fillRect(102,66,16,16);ctx.fillRect(480+38*2,68,40,18);
+    ctx.restore();
   }
   const now=performance.now()/1000;
   if(S.weather==1){
@@ -680,10 +813,12 @@ function draw(){
     ctx.fillStyle='#fff';
     for(let i=0;i<80;i++){const x=Math.abs((i*83.1+Math.sin(now+i)*20))%640,y=(i*41.9+now*50)%480;ctx.fillRect(x,y,2,2)}
   }
+  ctx.save();ctx.translate(-Math.round(CAM.x),-Math.round(CAM.y));
   for(const p of parts){ctx.globalAlpha=Math.max(0,Math.min(1,p.l*2));rr(p.x-1,p.y-1,3,3,p.c)}
   ctx.globalAlpha=1;
   for(const f of floats){ctx.globalAlpha=Math.max(0,Math.min(1,f.l*1.5));text(f.s,f.x,f.y,'#fff7c2',14,'center')}
   ctx.globalAlpha=1;
+  ctx.restore();
   drawHUD();
   drawObj();
   if(fade){
@@ -740,14 +875,365 @@ function updateChickens(dt){
   }
 }
 
+/* ---------- 恋爱与婚姻 ---------- */
+const C={x:6*TS+16,y:9*TS+24,tx:6*TS+16,ty:9*TS+24,wait:1,dir:1};
+const CP=makePerson({skin:'#d9a97c',hair:'#2a2a3a',shirt:'#5a7a4a',shirtD:'#3f5a34',pants:'#4a3a2a',shoe:'#2a1a0a',hat:'#d9a73a',band:'#7a5a1a'});
+const LOVER={lulu:{name:'阿鹿'},chuan:{name:'阿川'}};
+function frOf(id){return id=='lulu'?S.fr:S.rel.chuan.fr}
+function addFr(id,n){const v=Math.max(0,Math.min(10,frOf(id)+n));if(id=='lulu')S.fr=v;else S.rel.chuan.fr=v}
+function talkedOf(id){return id=='lulu'?S.talked:S.rel.chuan.talked}
+function giftedOf(id){return id=='lulu'?S.gifted:S.rel.chuan.gifted}
+function setGifted(id,v){if(id=='lulu')S.gifted=v;else S.rel.chuan.gifted=v}
+function heartsStr(n){let s='';for(let i=0;i<10;i++)s+=i<n?'♥':'♡';return s}
+function nearC(){return !MINE.on&&Math.hypot(P.x-C.x,P.y-C.y)<46}
+function boxOf(id){
+  if(S.love.who==id&&S.love.state==3)return[2,6,3,5];
+  return id=='lulu'?[6,13,3,6]:[5,9,8,10];
+}
+function wander(n,b,dt){
+  const dx=n.tx-n.x,dy=n.ty-n.y,d=Math.hypot(dx,dy);
+  n.mv=d>1;
+  if(d>1){const s=Math.min(40*dt,d);n.x+=dx/d*s;n.y+=dy/d*s;if(Math.abs(dx)>1)n.dir=dx>0?1:-1}
+  else{
+    n.wait-=dt;
+    if(n.wait<=0){
+      n.wait=1.5+Math.random()*3;
+      const o=[[1,0],[-1,0],[0,1],[0,-1]][Math.random()*4|0];
+      const nx=Math.floor(n.x/TS)+o[0],ny=Math.floor(n.y/TS)+o[1];
+      if(nx>=b[0]&&nx<=b[1]&&ny>=b[2]&&ny<=b[3]&&!solid(nx,ny)&&!S.tiles[nx+','+ny]){n.tx=nx*TS+16;n.ty=ny*TS+24}
+    }
+  }
+}
+function placeSpouse(){
+  if(S.love.state!=3)return;
+  const n=S.love.who=='lulu'?N:C;
+  n.x=n.tx=3*TS+16;n.y=n.ty=3*TS+24;
+}
+
+/* 礼物喜好：3 最爱 / 2 喜欢 / 1 一般 / -1 讨厌 */
+const TASTE={
+  lulu:{love:['e_egg','h_strawberry','m_milk'],like:['h_'],hate:['s_goo','o_copper','o_iron']},
+  chuan:{love:['o_gold','o_iron','f_3'],like:['o_','f_','m_wool'],hate:['h_turnip','s_goo']}
+};
+function taste(id,k){
+  const t=TASTE[id];
+  if(t.love.indexOf(k)>=0)return 3;
+  if(t.hate.indexOf(k)>=0)return -1;
+  for(const p of t.like)if(k.indexOf(p)==0)return 2;
+  return 1;
+}
+function gift(){
+  if(MINE.on)return;
+  const id=npcNear()?'lulu':nearC()?'chuan':null;
+  if(id)openGift(id);
+}
+function openGift(id){
+  const nm=LOVER[id].name,done=giftedOf(id);
+  let h='<h2>🎁 送给'+nm+'</h2><div style="color:#ff9ab8;letter-spacing:2px">'+heartsStr(frOf(id))+'</div>';
+  const keys=Object.keys(S.items).filter(function(k){return S.items[k]>0});
+  if(done)h+='<div>今天已经送过礼物了</div>';
+  else if(!keys.length)h+='<div>背包里没有可以送的东西</div>';
+  else for(const k of keys)h+='<div class="row"><span>'+itemName(k)+' ×'+S.items[k]+'</span><button onclick="giveGift(\''+id+'\',\''+k+'\')">送出</button></div>';
+  if(S.love.state==0&&S.bouquet>0)h+='<div class="row"><span>💐 花束（表白）×'+S.bouquet+'<br><small>需要好感 8</small></span><button onclick="giveBouquet(\''+id+'\')">表白</button></div>';
+  if(S.love.who==id&&S.love.state==1&&S.ring>0)h+='<div class="row"><span>💍 订婚戒指 ×'+S.ring+'<br><small>需要好感 10</small></span><button onclick="giveRing(\''+id+'\')">求婚</button></div>';
+  h+='<div style="text-align:right"><button onclick="closeShop()">取消</button></div>';
+  shopEl.innerHTML=h;shopEl.style.display='block';shopOpen=true;
+}
+function giveGift(id,k){
+  if(giftedOf(id)||!S.items[k])return;
+  const t=taste(id,k),nm=LOVER[id].name;
+  takeItem(k,1);setGifted(id,true);addFr(id,t);closeShop();
+  const word={'3':'这是我最喜欢的东西！谢谢！','2':'我很喜欢，谢谢你！','1':'谢谢你的心意。','-1':'……这个，我不太喜欢。'}[String(t)];
+  msg(nm+'：'+word+'  (好感 '+frOf(id)+'/10)',4.5);
+  floater(P.x,P.y-44,t>0?'♥'.repeat(t):'💔');
+  burst(P.x,P.y-30,t>0?'#ff9ab8':'#888888',8);
+  snd(t>0?'talk':'hurt');
+  checkMs();
+}
+function giveBouquet(id){
+  const nm=LOVER[id].name;closeShop();
+  if(S.love.state>0){msg(S.love.who==id?'你们已经在交往了':'你已经有恋人了……',3);return}
+  if(S.bouquet<=0)return;
+  if(frOf(id)<8){msg(nm+'：谢谢……但我们好像还没熟到那个程度。（需要好感 8）',4.5);return}
+  S.bouquet--;S.love={who:id,state:1,wed:0};
+  const lines=id=='lulu'?[['阿鹿','这……这是给我的？'],['','阿鹿的脸一下子红了，她接过花束，小声说：'],['阿鹿','我、我也一直想对你说……我愿意。']]:[['阿川','……花？给我？'],['','他愣了好一会儿，耳朵慢慢红了。'],['阿川','……我不太会说话。但是，我愿意。']];
+  startDlg({name:'',lines:lines,onEnd:function(){sv();snd('win');msg('💕 你和'+nm+'开始交往了',5);checkMs()}});
+}
+function giveRing(id){
+  const nm=LOVER[id].name;closeShop();
+  if(S.love.who!=id||S.love.state!=1){msg('需要先交往才能求婚',3);return}
+  if(S.ring<=0)return;
+  if(frOf(id)<10){msg(nm+'：我还需要一点时间……（需要好感 10）',4.5);return}
+  S.ring--;S.love.state=2;S.love.wed=3;
+  const lines=id=='lulu'?[['阿鹿','这枚戒指……你是认真的吗？'],['','阿鹿捂住嘴，眼睛亮晶晶的。'],['阿鹿','我愿意！我当然愿意！']]:[['阿川','……戒指。'],['','阿川沉默了很久，手指微微发抖。'],['阿川','我愿意。我会一直，在你身边。']];
+  startDlg({name:'',lines:lines,onEnd:function(){sv();snd('win');msg('💍 订婚了！婚礼将在 3 天后举行',5.5)}});
+}
+function weddingScript(id){
+  const nm=LOVER[id].name;
+  return{name:'',lines:[['','婚礼那天，全镇的人都来了，彩旗在风里轻轻晃。'],['村长老陈','在鹈鹕镇的见证下，我宣布你们成为夫妻！'],[nm,'从今天起，这里也是我的家了。'],['','（从此以后，'+nm+'会住在农场里，每天早上都有小惊喜。）']],onEnd:function(){placeSpouse();sv();snd('win');msg('💒 你结婚了！'+nm+'搬进了农场',6);checkMs()}};
+}
+
+/* 心动剧情：好感达到门槛后，聊天时触发一次 */
+const EVENTS={
+  lulu:[
+    {h:5,id:'l5',lines:[['阿鹿','你有空吗？陪我走走。'],['阿鹿','我小时候总在这片田边玩，那时候觉得农场就是整个世界。'],['阿鹿','后来我才发现，世界很大，可我还是最喜欢这里。'],['','你们并肩走了一段，夕阳把两个影子拉得很长。']]},
+    {h:8,id:'l8',lines:[['','突然下起了小雨，阿鹿举着一把大伞向你跑来。'],['阿鹿','我就知道你没带伞！来，挤一挤。'],['阿鹿','……其实，我是特意出来找你的。'],['','雨声很轻，你们谁也没有再说话。']]}
+  ],
+  chuan:[
+    {h:3,id:'c3',lines:[['阿川','你也进过矿洞？里面的史莱姆挺吵的。'],['阿川','我小时候在里面迷过路，是你爷爷把我背出来的。'],['阿川','所以我对这块农场……有点特别的感情。']]},
+    {h:6,id:'c6',lines:[['阿川','给你看个东西。'],['','他从口袋里摸出一块亮闪闪的矿石，在掌心里翻了翻。'],['阿川','这是我找到的第一块金矿。我想送你，但是……'],['阿川','……算了，借你看一天。明天还我。']]},
+    {h:9,id:'c9',lines:[['','夜里，阿川在池塘边等你。'],['阿川','今晚的星星特别多。'],['阿川','我不太会说话，但和你在一起，我觉得很安心。'],['阿川','……谢谢你，一直愿意听我讲那些没人在意的矿石。']]}
+  ]
+};
+function heartEvent(id){
+  const rel=S.rel[id];
+  for(const e of EVENTS[id]){
+    if(frOf(id)>=e.h&&!rel.ev[e.id]){
+      rel.ev[e.id]=1;
+      startDlg({name:'',lines:e.lines,onEnd:function(){sv();snd('quest');msg('💗 '+LOVER[id].name+'的心动时刻',3.5)}});
+      return true;
+    }
+  }
+  return false;
+}
+const RLINES={
+  lulu:{1:['今天也想见到你。','我给你留了一块饼干。','面包房的事……我想第一个告诉你。'],
+        2:['婚礼要准备什么呢？我有点紧张。','我昨晚一直在想婚礼的蛋糕。'],
+        3:['早安！今天的面包出炉啦。','晚上我煮汤给你喝。','农场的田垄越来越整齐，我很骄傲。']},
+  chuan:{1:['……来了。','我在山洞口找到一朵花，给你。','今天下矿前，想先看你一眼。'],
+         2:['婚礼……我会好好说话的。','我练习了誓词，可还是会紧张。'],
+         3:['矿洞明天再去，今天陪你。','作物我都照看过了。','家里的灯，比矿洞里的暖多了。']}
+};
+function romanceTalk(id){
+  const st=S.love.state,ls=RLINES[id][st];
+  let l=ls[Math.random()*ls.length|0];
+  if(st==2)l+='（离婚礼还有 '+S.love.wed+' 天）';
+  startDlg({name:LOVER[id].name,lines:[l],onEnd:function(){snd('talk');floater(P.x,P.y-44,'♥')}});
+}
+const CLINES=['矿洞里越深越冷，但矿石越漂亮。','我在找一块金色的石头，据说在很深很深的地方。','你的锄头……保养得不错。','今天风向不错，适合出门。','史莱姆其实挺吵的，你别被它们吓到。'];
+function talkChuan(){
+  const rel=S.rel.chuan;
+  if(!rel.met){
+    rel.met=true;
+    startDlg({name:'阿川',lines:['……你好。我叫阿川，常在山洞口附近转悠。','别靠太近，我身上有石头味。','如果你要下矿，记得多带点体力。'],onEnd:function(){sv();snd('talk')}});
+    return;
+  }
+  if(!rel.talked){rel.talked=true;addFr('chuan',1)}
+  if(heartEvent('chuan'))return;
+  if(S.love.who=='chuan'&&S.love.state>=1){romanceTalk('chuan');return}
+  msg('阿川：'+CLINES[Math.random()*CLINES.length|0]+'  (好感 '+rel.fr+'/10)',4);snd('talk');
+}
+
+/* ---------- 牧场：牛羊猪鸭 ---------- */
+const ANI={
+  cow:{key:'cows',n:'奶牛',price:500,max:3,item:'m_milk',every:1,sound:'moo',desc:'每天产 1 瓶牛奶 $100'},
+  sheep:{key:'sheep',n:'绵羊',price:400,max:3,item:'m_wool',every:2,sound:'baa',desc:'每 2 天产 1 团羊毛 $140'},
+  pig:{key:'pigs',n:'小猪',price:300,max:2,item:'m_truffle',every:2,sound:'oink',desc:'每 2 天拱出 1 颗松露 $220'},
+  goat:{key:'goats',n:'山羊',price:350,max:2,item:'m_gmilk',every:2,sound:'baa',desc:'每 2 天产 1 瓶山羊奶 $170'},
+  duck:{key:'ducks',n:'鸭子',price:200,max:3,item:'m_duck',every:1,sound:'quack',desc:'每天下 1 个鸭蛋 $70'}
+};
+const ATYPES=['cow','sheep','pig','goat','duck'];
+function cntOf(t){return S[ANI[t].key]||0}
+function totAnimals(){return ATYPES.reduce(function(n,t){return n+cntOf(t)},0)}
+function prodGet(t){const it=ANI[t].item;return it=='m_milk'?S.milk:it=='m_wool'?S.wool:((S.pout&&S.pout[it])||0)}
+function prodSet(t,v){const it=ANI[t].item;if(it=='m_milk')S.milk=v;else if(it=='m_wool')S.wool=v;else{if(!S.pout)S.pout={};S.pout[it]=v}}
+function prodTotal(){return ATYPES.reduce(function(n,t){return n+prodGet(t)},0)}
+const AN=[];
+const PEN={x0:3.3*TS,x1:8.3*TS,y0:10.7*TS,y1:12.9*TS};
+function makeCow(f){
+  const k=cvs(20,14),g=k.getContext('2d'),R=mkR(g),W_='#f4f4f4',B_='#2a2a2a';
+  R(1,4,1,4,B_);                                   // 尾巴
+  R(2,3,13,8,O_);R(3,4,11,6,W_);                    // 身体
+  R(5,4,3,3,B_);R(10,6,3,3,B_);R(4,8,2,1,B_);
+  R(14,2,5,7,O_);R(15,3,3,5,W_);R(15,1,1,2,'#e8d8a8');R(17,1,1,2,'#e8d8a8'); // 头和角
+  R(15,6,4,3,'#f2a0a8');R(16,7,1,1,'#b8606a');R(17,4,1,1,'#222');           // 鼻子和眼睛
+  R(4,11,2,3-(f?1:0),O_);R(7,11,2,3-(f?0:1),O_);R(10,11,2,3-(f?1:0),O_);R(12,11,2,3-(f?0:1),O_);
+  R(4,11,2,2-(f?1:0),W_);R(10,11,2,2-(f?1:0),W_);
+  return k;
+}
+function makeSheep(f){
+  const k=cvs(16,12),g=k.getContext('2d'),R=mkR(g),D='#4a3a32';
+  R(2,2,10,8,O_);R(1,3,12,6,O_);
+  R(3,3,8,6,'#f6f6f0');R(2,4,10,4,'#f6f6f0');
+  R(4,4,2,2,'#e4e4dc');R(8,6,2,2,'#e4e4dc');
+  R(11,3,4,6,O_);R(12,4,3,4,D);R(12,3,1,2,D);R(13,5,1,1,'#fff');
+  R(4,9,2,3-(f?1:0),D);R(9,9,2,3-(f?0:1),D);
+  return k;
+}
+function makePig(f){
+  const k=cvs(18,12),g=k.getContext('2d'),R=mkR(g),P1='#f2a0b0',P2='#e0788c';
+  R(0,4,2,2,P2);
+  R(1,3,14,7,O_);R(2,4,12,5,P1);R(2,4,12,1,'#f8bcc8');R(5,6,3,2,'#e88a9c');
+  R(14,3,4,7,O_);R(14,4,3,5,P1);R(16,6,2,3,P2);R(17,7,1,1,'#7a2a3a');
+  R(15,4,1,1,'#222');R(13,2,2,2,P2);
+  R(3,9,2,3-(f?1:0),'#c8607a');R(6,9,2,3-(f?0:1),'#c8607a');R(9,9,2,3-(f?1:0),'#c8607a');R(12,9,2,3-(f?0:1),'#c8607a');
+  return k;
+}
+function makeGoat(f){
+  const k=cvs(16,14),g=k.getContext('2d'),R=mkR(g),W_='#e8e4dc',D='#6a5a4a';
+  R(1,4,2,2,O_);
+  R(2,4,10,6,O_);R(3,5,8,4,W_);R(5,6,3,2,'#cfc8bc');
+  R(11,1,4,8,O_);R(12,2,3,6,W_);
+  R(12,0,1,2,'#8a7a5a');R(14,0,1,2,'#8a7a5a');
+  R(13,3,1,1,'#222');R(14,6,1,1,'#b08a7a');R(13,8,1,2,'#cfc8bc');
+  R(3,9,2,5-(f?1:0),D);R(6,9,2,5-(f?0:1),D);R(8,9,2,5-(f?1:0),D);R(10,9,2,5-(f?0:1),D);
+  return k;
+}
+function makeDuck(f){
+  const k=cvs(12,9),g=k.getContext('2d'),R=mkR(g);
+  R(0,3,2,2,'#fafafa');
+  R(1,3,6,5,O_);R(2,4,4,3,'#fafafa');R(2,5,3,2,'#d8d8d0');
+  R(6,0,3,4,O_);R(7,1,2,2,'#2f8a4a');R(8,1,1,1,'#222');
+  R(9,2,3,1,'#f2a83a');
+  R(f?2:4,8,1,1,'#f2a83a');R(f?5:3,8,1,1,'#f2a83a');
+  return k;
+}
+const SPRT={cow:[makeCow(0),makeCow(1)],sheep:[makeSheep(0),makeSheep(1)],pig:[makePig(0),makePig(1)],goat:[makeGoat(0),makeGoat(1)],duck:[makeDuck(0),makeDuck(1)]};
+const ASIZE={cow:[40,28,20,27,15],sheep:[32,24,16,23,11],pig:[36,24,18,23,13],goat:[32,28,16,27,12],duck:[24,18,12,17,8]};
+const barnC={};
+function barnSprite(sn){
+  if(barnC[sn])return barnC[sn];
+  const k=cvs(48,32),g=k.getContext('2d'),R=mkR(g),snow=sn==3;
+  for(let y=0;y<12;y++){
+    const inset=Math.max(0,5-Math.floor(y/2));
+    R(inset,y,48-inset*2,1,snow?(y%3==2?'#cfd8de':'#e8eef2'):(y%3==2?'#7a2b22':'#9a3a2e'));
+  }
+  R(0,12,48,1,O_);
+  R(21,3,6,7,O_);R(22,4,4,5,'#e8c860');R(22,6,4,1,'#b8923a');
+  R(3,13,42,19,O_);R(4,13,40,18,'#b5483a');
+  for(let x=4;x<44;x+=4)R(x,13,1,18,'#98392d');
+  R(4,28,40,4,'#8a8a8a');R(4,28,40,1,'#a8a8a8');
+  R(15,15,18,17,O_);R(16,16,16,16,'#8a2f25');
+  R(16,16,16,1,'#fff');R(16,16,1,16,'#fff');R(31,16,1,16,'#fff');R(23,16,2,16,'#fff');
+  for(let i=0;i<7;i++){R(17+i,17+i*2,1,1,'#f4d8d0');R(30-i,17+i*2,1,1,'#f4d8d0')}
+  R(5,17,8,8,O_);R(6,18,6,6,'#e8c860');R(6,20,6,1,'#b8923a');R(8,18,1,6,'#b8923a');
+  R(35,17,8,8,O_);R(36,18,6,6,'#9fd3ee');R(38,18,2,6,'#5b3a1a');
+  barnC[sn]=k;return k;
+}
+const PETNAMES={cow:['花花','大黄','牛牛','小白','阿福','团团'],sheep:['棉花','云朵','毛毛','团子','雪球','咩咩'],pig:['肉肉','小粉','哼哼','胖虎'],goat:['小角','山山','阿咩','白胡子'],duck:['嘎嘎','小黄','游游','鸭梨','泡泡']};
+function petsOf(t){return S.pets.filter(function(p){return p.t==t})}
+function ensurePets(){
+  if(!S.pets)S.pets=[];
+  for(const t of ATYPES){
+    const want=cntOf(t);
+    while(petsOf(t).length<want){
+      const used=S.pets.map(function(p){return p.name}),free=PETNAMES[t].filter(function(n){return used.indexOf(n)<0});
+      S.pets.push({t:t,name:free.length?free[Math.random()*free.length|0]:PETNAMES[t][0]+(petsOf(t).length+1),fr:0,pet:false});
+    }
+  }
+}
+function heartsOf(p){return Math.min(5,Math.floor(p.fr/20))}
+function nearAnimal(){
+  if(MINE.on||dlg)return null;
+  const tg=target();if(tg[0]>=3&&tg[0]<=5&&tg[1]>=13&&tg[1]<=14)return null;
+  const ax=P.x+P.fx*18,ay=P.y-8+P.fy*18;let best=null,bd=34;
+  for(const a of AN){if(!a.pet)continue;const d=Math.hypot(a.x-ax,(a.y-10)-ay);if(d<bd){bd=d;best=a}}
+  return best;
+}
+function petAnimal(a){
+  const p=a.pet;
+  snd(ANI[a.t].sound);
+  if(p.pet){msg(p.name+'今天已经被你摸过了，开心地蹭了蹭你  '+'♥'.repeat(heartsOf(p))+'♡'.repeat(5-heartsOf(p)),3);return}
+  const h0=heartsOf(p);
+  p.pet=true;p.fr=Math.min(100,p.fr+8);
+  const h=heartsOf(p);
+  floater(a.x,a.y-34,'♥');burst(a.x,a.y-24,'#ff9ab8',8);
+  msg(p.name+(h>h0?'更喜欢你了！':'舒服地眯起了眼睛')+'  '+'♥'.repeat(h)+'♡'.repeat(5-h)+(h>=3?'  （心情好，会多产一点）':''),3.5);
+  checkMs();
+}
+function updateAnimals(dt){
+  ensurePets();
+  const want={};for(const t of ATYPES)want[t]=cntOf(t);
+  for(const t in want){
+    let have=0;for(const a of AN)if(a.t==t)have++;
+    while(have<want[t]){
+      AN.push({t:t,x:PEN.x0+Math.random()*(PEN.x1-PEN.x0),y:PEN.y0+Math.random()*(PEN.y1-PEN.y0),tx:0,ty:0,wait:Math.random()*2,dir:Math.random()<.5?-1:1,ph:Math.random()*5,mv:false});
+      have++;
+    }
+  }
+  const ci={cow:0,sheep:0,pig:0,goat:0,duck:0};
+  for(const a of AN){
+    a.pet=petsOf(a.t)[ci[a.t]++];
+    if(!a.tx){a.tx=a.x;a.ty=a.y}
+    const dx=a.tx-a.x,dy=a.ty-a.y,d=Math.hypot(dx,dy);
+    a.mv=d>1;
+    if(d>1){const s=Math.min(20*dt,d);a.x+=dx/d*s;a.y+=dy/d*s;if(Math.abs(dx)>1)a.dir=dx>0?1:-1}
+    else{
+      a.wait-=dt;
+      if(a.wait<=0){
+        a.wait=1.5+Math.random()*4;
+        const nx=a.x+(Math.random()*90-45),ny=a.y+(Math.random()*40-20);
+        if(nx>PEN.x0&&nx<PEN.x1&&ny>PEN.y0&&ny<PEN.y1&&!S.tiles[Math.floor(nx/TS)+','+Math.floor(ny/TS)]){a.tx=nx;a.ty=ny}
+      }
+    }
+  }
+}
+function drawAnimal(a){
+  const z=ASIZE[a.t],spr=SPRT[a.t][((performance.now()/(a.mv?260:700)+a.ph)|0)%2];
+  ctx.fillStyle='rgba(0,0,0,.22)';ctx.beginPath();ctx.ellipse(a.x,a.y+1,z[4],4,0,0,7);ctx.fill();
+  ctx.save();ctx.translate(a.x,a.y);if(a.dir<0)ctx.scale(-1,1);
+  ctx.drawImage(spr,-z[2],-z[3],z[0],z[1]);
+  ctx.restore();
+  if(a.pet&&nearAnimal()===a){
+    const h=heartsOf(a.pet);
+    text(a.pet.name,a.x,a.y-34,'#fff',11,'center');
+    text('♥'.repeat(h)+'♡'.repeat(5-h),a.x,a.y-46,'#ff9ab8',11,'center');
+  }
+  else if(a.pet&&heartsOf(a.pet)>=3&&((performance.now()/1000+a.ph)%6)<.5)text('♥',a.x,a.y-32,'#ff9ab8',12,'center');
+}
+function drawBarn(){
+  ctx.drawImage(barnSprite(S.season),3*TS,13*TS,96,64);
+  const tot=totAnimals(),b=Math.sin(performance.now()/250)*2;
+  if(prodTotal()>0){
+    ctx.fillStyle='#fffbe6';ctx.beginPath();ctx.ellipse(4*TS,13*TS-6+b,10,10,0,0,7);ctx.fill();
+    ctx.strokeStyle='#c9a24a';ctx.lineWidth=1.5;ctx.stroke();
+    text(String(prodTotal()),4*TS,13*TS-2+b,'#5b3a1a',11,'center');
+  }else if(tot>0&&S.fedN<tot){
+    ctx.fillStyle='#fffbe6';ctx.beginPath();ctx.ellipse(4*TS,13*TS-6+b,10,10,0,0,7);ctx.fill();
+    ctx.strokeStyle='#d0645a';ctx.lineWidth=1.5;ctx.stroke();
+    text('饿',4*TS,13*TS-2+b,'#a8402f',11,'center');
+  }
+}
+function barn(){
+  const tot=totAnimals();
+  if(tot==0){msg('牲畜棚还是空的，去杂货铺买奶牛、绵羊、小猪、山羊或鸭子（干草也在那儿）',3.5);return}
+  const parts=[];
+  for(const t of ATYPES){const n=prodGet(t);if(n>0){const it=ANI[t].item;S.items[it]=(S.items[it]||0)+n;parts.push('收了'+ITEMX[it][0]+'×'+n);prodSet(t,0)}}
+  const need=tot-S.fedN;
+  if(need>0){
+    const use=Math.min(need,S.hay);
+    if(use>0){S.hay-=use;S.fedN+=use;parts.push('喂了 '+use+' 份干草');snd(ANI[ATYPES.find(function(t){return cntOf(t)>0})].sound)}
+    if(use<need)parts.push('干草不够，还差 '+(need-use)+' 份');
+  }
+  if(parts.length){snd('harvest');burst(4*TS+16,13*TS,'#fff59d',10)}
+  msg(parts.length?parts.join('，'):'动物们都吃饱了，今天的产品已经收完',4);
+  checkMs();
+}
+function livestockDay(){
+  ensurePets();
+  let fed=S.fedN;
+  const bonus=function(p){const h=heartsOf(p);return h>=5?1:h>=3&&Math.random()<.5?1:0};
+  for(const t of ATYPES){
+    const ps=petsOf(t),a=ANI[t],f=Math.min(ps.length,fed);fed-=f;
+    let q=0;
+    ps.forEach(function(p,i){
+      if(i<f){if(a.every==1||S.day%a.every==0)q+=1+bonus(p);p.fr=Math.min(100,p.fr+4)}
+      else p.fr=Math.max(0,p.fr-8);
+      p.pet=false;
+    });
+    prodSet(t,Math.min(12,prodGet(t)+q));
+  }
+  S.fedN=0;
+}
+
 /* ---------- 矿洞 ---------- */
 const MINE={on:false,floor:1,g:[],rocks:{},sl:[],lu:null,ld:null};
-const ORES={copper:{n:'铜矿',p:25,hp:4},iron:{n:'铁矿',p:55,hp:6},gold:{n:'金矿',p:110,hp:8}};
+const ORES={copper:{n:'铜矿',p:25,hp:4},iron:{n:'铁矿',p:55,hp:6},gold:{n:'金矿',p:110,hp:8},crystal:{n:'水晶',p:220,hp:10}};
 const SWORD=['木剑','铜剑','铁剑','金剑'],PICK=['石镐','铜镐','铁镐','金镐'];
 const UPCOST=[[200,'copper',5],[600,'iron',5],[1500,'gold',5]];
-const SLIMECOL={green:'#5fd35f',blue:'#4aa8ff',red:'#ff5a5a'};
-const SLIMESTAT={green:{hp:4,dmg:8,sp:34},blue:{hp:9,dmg:12,sp:44},red:{hp:16,dmg:18,sp:54}};
-const ROCKCOL={stone:'#9a9aa6',copper:'#e08a3a',iron:'#c8d6e0',gold:'#ffd54f'};
+const SLIMECOL={green:'#5fd35f',blue:'#4aa8ff',red:'#ff5a5a',bat:'#8a5ac8'};
+const SLIMESTAT={green:{hp:4,dmg:8,sp:34},blue:{hp:9,dmg:12,sp:44},red:{hp:16,dmg:18,sp:54},bat:{hp:5,dmg:10,sp:78}};
+const ROCKCOL={stone:'#9a9aa6',copper:'#e08a3a',iron:'#c8d6e0',gold:'#ffd54f',crystal:'#8ee8ff'};
 
 function mineSolid(x,y){
   if(x<0||y<0||x>=W||y>=H)return true;
@@ -760,7 +1246,8 @@ function mineHit(x,y){
 }
 function oreType(n){
   const r=Math.random();
-  if(n>=8&&r<.08)return'gold';
+  if(n>=12&&r<.07)return'crystal';
+  if(n>=8&&r<.15)return'gold';
   if(n>=4&&r<.20)return'iron';
   if(r<.38)return'copper';
   return'stone';
@@ -802,13 +1289,25 @@ function genFloor(n,fromBelow){
     const c=pick(pool),t=oreType(n);
     MINE.rocks[c[1]*W+c[0]]={t:t,hp:t=='stone'?3:ORES[t].hp,ladder:false};
   }
+  if(n>=3&&Math.random()<.45&&pool.length){
+    const c=pick(pool);
+    if(!MINE.rocks[c[1]*W+c[0]])MINE.rocks[c[1]*W+c[0]]={t:'chest',hp:1,ladder:false};
+  }
   const kind=n<5?'green':n<10?'blue':'red',st=SLIMESTAT[kind],ns=Math.min(9,3+((n/2)|0));
   const sp=far.filter(function(c){return !MINE.rocks[c[1]*W+c[0]]});
   for(let i=0;i<ns&&sp.length;i++){
     const c=pick(sp);
     MINE.sl.push({x:c[0]*TS+16,y:c[1]*TS+16,hp:st.hp,mhp:st.hp,dmg:st.dmg,sp:st.sp,kind:kind,hurt:0,kb:0,kx:0,ky:0,wt:Math.random()*2,wx:0,wy:0,ph:Math.random()*6});
   }
-  MINE.floor=n;
+  if(n>=5){
+    const nb2=Math.min(4,1+(((n-5)/3)|0));
+    for(let i=0;i<nb2&&sp.length;i++){
+      const c=pick(sp),b=SLIMESTAT.bat;
+      MINE.sl.push({x:c[0]*TS+16,y:c[1]*TS+16,hp:b.hp,mhp:b.hp,dmg:b.dmg,sp:b.sp,kind:'bat',hurt:0,kb:0,kx:0,ky:0,wt:Math.random()*2,wx:0,wy:0,ph:Math.random()*6});
+    }
+  }
+  MINE.floor=n;MINE.boss=null;
+  if(n%10==0&&!bossDone(n))setupBoss(n);
   if(fromBelow){P.x=ldc[0]*TS+16;P.y=ldc[1]*TS+22}
   else{P.x=sx*TS+16;P.y=sy*TS+22}
   P.fx=0;P.fy=-1;P.inv=1;
@@ -832,10 +1331,117 @@ function ascend(){
   if(MINE.floor<=1){leaveMine();return}
   genFloor(MINE.floor-1,true);snd('stairs');msg('第 '+MINE.floor+' 层',2);
 }
+/* ----- 史莱姆王（每 10 层） ----- */
+function bossDone(n){if(!S.mine.boss)S.mine.boss={};return !!S.mine.boss[n]}
+function setupBoss(n){
+  const tier=n/10;
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)MINE.g[y][x]=0;
+  MINE.rocks={};MINE.sl=[];
+  MINE.ld.shown=false;
+  const hp=60+tier*40;
+  MINE.boss={x:W/2*TS,y:4*TS,hp:hp,mhp:hp,tier:tier,dmg:18+tier*4,sp:36+tier*8,st:'chase',t:0,cd:2.5,tx:0,ty:0,sx:0,sy:0,hurt:0,ph:0,p2:false,name:tier>1?'红冠史莱姆王':'史莱姆王'};
+  msg('地面在震动……'+MINE.boss.name+'出现了！',4.5);snd('quest');
+}
+function bossHit(dmg,fx,fy){
+  const B=MINE.boss;
+  B.hp-=dmg;B.hurt=.15;
+  burst(B.x,B.y-20,'#7ee07e',8);snd('hit');floater(B.x,B.y-60,'-'+dmg);
+  if(!B.p2&&B.hp<B.mhp/2){B.p2=true;msg(B.name+'暴怒了！',2.5);snd('hurt')}
+  if(B.hp<=0)bossDie();
+}
+function bossDie(){
+  const B=MINE.boss,f=MINE.floor;
+  B.hp=0;MINE.sl=[];
+  burst(B.x,B.y-20,'#ffd54f',30);burst(B.x,B.y-20,'#7ee07e',20);
+  S.mine.boss[f]=1;
+  const g=500*B.tier,o=3+2*B.tier;
+  S.gold+=g;for(let i=0;i<o;i++)addItem('o_gold');
+  MINE.ld.shown=true;
+  msg('🏆 击败了'+B.name+'！奖励 $'+g+' 和金矿×'+o+'，下楼的梯子出现了',6);
+  snd('win');sv();checkMs();
+}
+function updateBoss(dt){
+  const B=MINE.boss;if(!B||B.hp<=0)return;
+  if(B.hurt>0)B.hurt-=dt;
+  const dx=P.x-B.x,dy=(P.y-10)-B.y,d=Math.hypot(dx,dy)||1,spd=B.sp*(B.p2?1.35:1);
+  if(B.st=='chase'){
+    const mx=B.x+dx/d*spd*dt,my=B.y+dy/d*spd*dt;
+    B.x=Math.max(2*TS,Math.min((W-2)*TS,mx));B.y=Math.max(2*TS,Math.min((H-2)*TS,my));
+    B.cd-=dt;
+    if(B.cd<=0){B.st='tele';B.t=.7;B.tx=Math.max(2*TS,Math.min((W-2)*TS,P.x));B.ty=Math.max(2*TS,Math.min((H-2)*TS,P.y-10))}
+  }else if(B.st=='tele'){
+    B.t-=dt;
+    if(B.t<=0){B.st='air';B.t=.45;B.sx=B.x;B.sy=B.y}
+  }else if(B.st=='air'){
+    B.t-=dt;const k=1-Math.max(0,B.t)/.45;
+    B.x=B.sx+(B.tx-B.sx)*k;B.y=B.sy+(B.ty-B.sy)*k;
+    if(B.t<=0){
+      B.st='rest';B.t=.8;
+      burst(B.x,B.y,'#9a9aa6',16);snd('hit');
+      if(Math.hypot(P.x-B.x,(P.y-10)-B.y)<62&&P.inv<=0){
+        S.hp-=B.dmg;P.inv=.9;snd('hurt');burst(P.x,P.y-14,'#e53935',8);floater(P.x,P.y-40,'-'+B.dmg);
+      }
+      const n=B.p2?3:2;
+      for(let i=0;i<n&&MINE.sl.length<6;i++){
+        const a=Math.random()*6.28,sx=Math.max(2*TS,Math.min((W-2)*TS,B.x+Math.cos(a)*50)),sy=Math.max(2*TS,Math.min((H-2)*TS,B.y+Math.sin(a)*50));
+        const kind=B.tier>1?'blue':'green',st=SLIMESTAT[kind];
+        MINE.sl.push({x:sx,y:sy,hp:st.hp,mhp:st.hp,dmg:st.dmg,sp:st.sp,kind:kind,hurt:0,kb:0,kx:0,ky:0,wt:1,wx:0,wy:0,ph:Math.random()*6});
+      }
+    }
+  }else if(B.st=='rest'){
+    B.t-=dt;
+    if(B.t<=0){B.st='chase';B.cd=B.p2?1.4:2.2}
+  }
+  if(B.st!='air'&&d<38&&P.inv<=0){
+    const dm=Math.round(B.dmg*.7);
+    S.hp-=dm;P.inv=.9;snd('hurt');burst(P.x,P.y-14,'#e53935',8);floater(P.x,P.y-40,'-'+dm);
+  }
+}
+function drawBoss(list,now){
+  const B=MINE.boss;if(!B||B.hp<=0)return;
+  if(B.st=='tele'){
+    list.push({y:0,f:function(){
+      const k=1-B.t/.7;
+      ctx.strokeStyle='rgba(255,80,80,'+(.35+.4*k)+')';ctx.lineWidth=3;
+      ctx.beginPath();ctx.ellipse(B.tx,B.ty+14,62*(1.15-.15*k),30*(1.15-.15*k),0,0,7);ctx.stroke();
+      ctx.fillStyle='rgba(255,60,60,'+(.08+.15*k)+')';ctx.fill();
+    }});
+  }
+  list.push({y:B.y+30,f:function(){
+    let lift=0;
+    if(B.st=='air'){const k=1-Math.max(0,B.t)/.45;lift=Math.sin(k*Math.PI)*80}
+    const gy=B.st=='air'?B.sy+(B.ty-B.sy)*(1-Math.max(0,B.t)/.45):B.y;
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(B.x,gy+28,34-lift/6,10-lift/20,0,0,7);ctx.fill();
+    const sq=B.st=='tele'?1-.15*(1-B.t/.7):B.st=='rest'?.88:1;
+    const w=88,h=76*sq,bx=B.x-w/2,by=B.y+28-h-lift;
+    if(B.hurt>0)ctx.globalAlpha=.55;
+    const kind=B.tier>1?'red':'blue';
+    ctx.drawImage(SLIMESPR[kind][((now*2)|0)%2],bx,by,w,h);
+    ctx.globalAlpha=1;
+    const cx=B.x,cy=by-2;
+    rr(cx-18,cy-4,36,8,'#7a5a1a');rr(cx-18,cy-5,36,5,'#ffd54f');
+    rr(cx-18,cy-13,6,9,'#ffd54f');rr(cx-3,cy-17,6,13,'#ffd54f');rr(cx+12,cy-13,6,9,'#ffd54f');
+    rr(cx-1,cy-12,2,2,'#e53935');
+    if(B.p2){ctx.fillStyle='rgba(255,60,60,.18)';ctx.beginPath();ctx.ellipse(B.x,B.y-lift,48,38,0,0,7);ctx.fill()}
+  }});
+}
 function killSlime(s){
   floater(s.x,s.y-20,'💥');
+  if(s.kind=='bat'){const g=12+(Math.random()*10|0);S.gold+=g;floater(s.x,s.y-32,'+$'+g);snd('coin');return}
   if(Math.random()<.6){addItem('s_goo');floater(s.x,s.y-30,'+凝胶')}
   snd('coin');
+}
+function openChest(tx,ty){
+  delete MINE.rocks[ty*W+tx];
+  const n=MINE.floor,g=40+n*6+(Math.random()*40|0);
+  S.gold+=g;const parts=['$'+g];
+  for(let i=0;i<1+(Math.random()*2|0);i++){
+    let t=oreType(n+4);if(t=='stone')t='copper';
+    const q=1+(Math.random()<.5?1:0);for(let j=0;j<q;j++)addItem('o_'+t);
+    parts.push(ORES[t].n+'×'+q);
+  }
+  burst(tx*TS+16,ty*TS+16,'#ffd54f',16);snd('win');
+  msg('📦 打开了宝箱：'+parts.join('，'),4);
 }
 function breakRock(r,tx,ty){
   delete MINE.rocks[ty*W+tx];
@@ -852,6 +1458,8 @@ function mineAct(){
   P.swing=.25;P.cd=.28;
   const ax=P.x+P.fx*24,ay=P.y-10+P.fy*24,dmg=2+2*S.gear.sword;
   let hit=false;
+  const B=MINE.boss;
+  if(B&&B.hp>0&&B.st!='air'&&Math.hypot(B.x-ax,(B.y-18)-ay)<52){hit=true;bossHit(dmg)}
   for(const s of MINE.sl){
     if(Math.hypot(s.x-ax,s.y-ay)<30){
       hit=true;s.hp-=dmg;s.hurt=.2;
@@ -863,6 +1471,7 @@ function mineAct(){
   }
   if(hit){MINE.sl=MINE.sl.filter(function(s){return s.hp>0});return}
   const tg=target(),tx=tg[0],ty=tg[1],r=MINE.rocks[ty*W+tx];
+  if(r&&r.t=='chest'){openChest(tx,ty);return}
   if(r){
     if(S.energy<=0){msg('没力气了……回农场睡一觉吧',2.5);return}
     S.energy-=1;r.hp-=1+S.gear.pick;snd('mine');burst(tx*TS+16,ty*TS+16,ROCKCOL[r.t],6);
@@ -885,11 +1494,22 @@ function mineHint(){
   return'';
 }
 function updateMine(dt){
+  updateBoss(dt);
   if(P.inv>0)P.inv-=dt;
   if(P.cd>0)P.cd-=dt;
   for(const s of MINE.sl){
     if(s.hurt>0)s.hurt-=dt;
     const dx=P.x-s.x,dy=(P.y-10)-s.y,d=Math.hypot(dx,dy)||1;
+    if(s.kind=='bat'){
+      s.ph+=dt*5;
+      let bx=0,by=0;
+      if(s.kb>0){s.kb-=dt;bx=s.kx;by=s.ky}
+      else if(d<190){bx=dx/d*s.sp+Math.cos(s.ph*1.7)*40;by=dy/d*s.sp+Math.sin(s.ph*1.3)*40}
+      else{bx=Math.cos(s.ph*.4)*22;by=Math.sin(s.ph*.5)*22}
+      s.x=Math.max(TS*1.2,Math.min((W-1.2)*TS,s.x+bx*dt));s.y=Math.max(TS*1.2,Math.min((H-1.2)*TS,s.y+by*dt));
+      if(d<20&&P.inv<=0&&s.kb<=0){S.hp-=s.dmg;P.inv=.9;snd('hurt');burst(P.x,P.y-14,'#e53935',8);floater(P.x,P.y-40,'-'+s.dmg)}
+      continue;
+    }
     let vx=0,vy=0;
     if(s.kb>0){s.kb-=dt;vx=s.kx;vy=s.ky}
     else if(d<130){vx=dx/d*s.sp;vy=dy/d*s.sp}
@@ -951,6 +1571,20 @@ for(const t in ROCKCOL){
   else{R(10,10,2,1,'#5a5a66');R(5,11,2,1,'#5a5a66')}
   ROCKSPR[t]=k;
 }
+(function(){
+  const k=cvs(16,16),g=k.getContext('2d'),R=mkR(g);
+  R(1,5,14,10,O_);R(2,6,12,8,'#a8682c');R(2,6,12,3,'#c88a44');R(1,9,14,1,O_);
+  R(7,8,2,3,'#ffd54f');R(2,12,12,1,'#7a4a1c');
+  ROCKSPR.chest=k;
+})();
+const BATSPR=[0,1].map(function(f){
+  const k=cvs(16,12),g=k.getContext('2d'),R=mkR(g),B='#6a3ea8',D='#3a2068';
+  R(6,4,4,5,O_);R(7,5,2,3,B);R(6,2,1,3,O_);R(9,2,1,3,O_);
+  R(7,6,1,1,'#ff6a6a');R(8,6,1,1,'#ff6a6a');
+  if(f){R(1,1,5,5,O_);R(2,2,4,3,B);R(10,1,5,5,O_);R(10,2,4,3,B);R(0,5,2,2,D);R(14,5,2,2,D)}
+  else{R(1,5,5,5,O_);R(2,6,4,3,B);R(10,5,5,5,O_);R(10,6,4,3,B);R(0,8,2,2,D);R(14,8,2,2,D)}
+  return k;
+});
 const SLIMESPR={};
 for(const kind in SLIMECOL){
   const c=SLIMECOL[kind];
@@ -1007,11 +1641,13 @@ function drawMineScene(){
     const r=MINE.rocks[key],x=key%W,y=(key/W)|0;
     list.push({y:y*TS+30,f:function(){ctx.drawImage(ROCKSPR[r.t],x*TS,y*TS,TS,TS)}});
   }
+  drawBoss(list,now);
   for(const s of MINE.sl){
     list.push({y:s.y+10,f:function(){
-      ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(s.x,s.y+10,11,4,0,0,7);ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(s.x,s.y+10,s.kind=='bat'?7:11,4,0,0,7);ctx.fill();
       if(s.hurt>0)ctx.globalAlpha=.55;
-      ctx.drawImage(SLIMESPR[s.kind][((now*3+s.ph)|0)%2],s.x-16,s.y-18,32,28);
+      if(s.kind=='bat')ctx.drawImage(BATSPR[((now*9)|0)%2],s.x-16,s.y-30+Math.sin(s.ph)*3,32,24);
+      else ctx.drawImage(SLIMESPR[s.kind][((now*3+s.ph)|0)%2],s.x-16,s.y-18,32,28);
       ctx.globalAlpha=1;
       if(s.hp<s.mhp){rr(s.x-12,s.y-24,24,3,'#333');rr(s.x-12,s.y-24,24*s.hp/s.mhp,3,'#e55353')}
     }});
@@ -1034,6 +1670,12 @@ function drawMineHUD(){
   rr(196,32,128,7,'#333');
   rr(196,32,Math.max(0,S.hp)/100*128,7,S.hp>35?'#e55353':'#ff2a2a');
   text(Math.max(0,S.hp)+'',330,40,'#fff',10,'right');
+  const B=MINE.boss;
+  if(B&&B.hp>0){
+    panel(150,54,340,30);
+    text(B.name,160,70,'#ffe9b5',12);
+    rr(250,62,230,10,'#333');rr(250,62,230*B.hp/B.mhp,10,B.p2?'#ff2a2a':'#7ee07e');
+  }
 }
 function drawMineFrame(){
   drawMineScene();
@@ -1068,7 +1710,12 @@ function dlgAdvance(){
   if(dlg.i>=dlg.pages.length){const f=dlg.onEnd;dlg=null;if(f)f()}
   else snd('page');
 }
-cv.addEventListener('pointerdown',function(){if(dlg)dlgAdvance()});
+cv.addEventListener('pointerdown',function(e){
+  if(dlg){dlgAdvance();return}
+  if(MINE.on||!mapMode)return;
+  const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*640,y=(e.clientY-r.top)/r.height*480,z=mapMode==2?4:2;
+  if(x<=8+WW*z+6&&y>=480-8-WH*z-6)toggleMap();
+});
 
 function isFest(){return S.season==2&&S.day==16}
 function festLeft(){let l=(2-S.season)*28+(16-S.day);if(l<0)l+=112;return l}
@@ -1174,6 +1821,8 @@ function talkLulu(){
     startDlg({name:L,lines:['哇，这么新鲜的鸡蛋！','等我一下……好了！蛋糕的第一块，给你。','太好吃了对不对？谢谢你，我觉得离梦想近了一点。'],onEnd:function(){takeItem('e_egg',5);S.gold+=300;S.fr=Math.min(10,S.fr+2);st.luluA=2;sv();snd('quest');msg('📜 任务完成 (+$300，好感 +2)',4.5);checkMs()}});
     return;
   }
+  if(heartEvent('lulu'))return;
+  if(S.love.who=='lulu'&&S.love.state>=1){romanceTalk('lulu');return}
   const ls=LINES[S.season];let l=ls[Math.random()*ls.length|0];
   if(S.fr>=10)l='你是我最好的朋友！❤';
   else if(S.fr>=5&&Math.random()<.5)l='和你聊天真开心！';
@@ -1202,6 +1851,7 @@ function checkEnding(){
 function objectives(){
   const st=S.story,o=[];
   if(!st.intro)return o;
+  if(S.love.state==2)o.push('💍 婚礼倒计时 '+S.love.wed+' 天');
   if(st.q1==0)o.push('和村长老陈聊聊（家旁边）');
   if(st.q1==1)o.push('收获作物 '+Math.min(3,st.harv||0)+'/3，再找村长');
   if(st.q2==1)o.push('丰收祭：交 3 个南瓜 ('+Math.min(3,S.items.h_pumpkin||0)+'/3)，剩 '+festLeft()+' 天');
@@ -1317,6 +1967,10 @@ function snd(n){
       case 'sleep':[330,262,196].forEach(function(f,i){tone(f,.5,'sine',.06,i*.25)});break;
       case 'win':[523,659,784,1047].forEach(function(f,i){tone(f,.2,'square',.05,i*.1)});break;
       case 'quest':[659,784,988,1319].forEach(function(f,i){tone(f,.35,'triangle',.06,i*.09)});break;
+      case 'oink':tone(210,.1,'sawtooth',.05,0,150);tone(190,.12,'sawtooth',.05,.12,130);break;
+      case 'quack':tone(620,.08,'square',.035,0,520);tone(560,.08,'square',.035,.1,470);break;
+      case 'moo':tone(190,.5,'sawtooth',.05,0,130);tone(150,.4,'triangle',.04,.05,110);break;
+      case 'baa':tone(520,.12,'square',.035,0,420);tone(480,.18,'square',.035,.12,380);break;
       case 'mine':tone(180,.07,'square',.06,0,90);tone(900,.03,'square',.02);break;
       case 'ore':tone(1319,.08,'triangle',.05);tone(1760,.18,'triangle',.05,.07);break;
       case 'hit':tone(300,.08,'sawtooth',.05,0,120);break;
@@ -1364,7 +2018,7 @@ const THEMES=[
 ];
 const FESTTHEME={key:62,prog:[[0,'M'],[7,'M'],[9,'m'],[5,'M']],sc:[0,2,4,7,9],bpm:122};
 function mood(){
-  if(MINE.on)return{key:50,prog:[[0,'m'],[1,'M'],[0,'m'],[10,'M']],sc:[0,3,5,7,10],bpm:62,night:true,fest:false,rain:false,snow:false,perc:false,season:0,id:'mine'};
+  if(MINE.on){const bs=!!(MINE.boss&&MINE.boss.hp>0);return{key:bs?47:50,prog:[[0,'m'],[1,'M'],[0,'m'],[10,'M']],sc:[0,3,5,7,10],bpm:bs?96:62,night:true,fest:false,rain:false,snow:false,perc:bs,season:0,id:bs?'mineboss':'mine'}}
   const night=S.t>=1080||S.t<400,fest=isFest(),th=fest?FESTTHEME:THEMES[S.season];
   return{key:th.key,prog:th.prog,sc:th.sc,bpm:th.bpm*(night?.8:1),night:night,fest:fest,rain:S.weather==1,snow:S.weather==2,
     perc:fest||(S.season==1&&!night&&S.weather==0),season:S.season,id:(fest?'f':S.season)+(night?'n':'d')};
@@ -1454,6 +2108,8 @@ function loop(now){
   update(dt);draw();
   requestAnimationFrame(loop);
 }
+placeSpouse();
+if(!S.forage||!S.forage.length)spawnForage();
 if(!S.story.intro){
   startDlg({name:'爷爷的信',lines:['亲爱的孩子：','当你读到这封信，我大概已经去很远的地方钓鱼了。','农场不大，但它陪了我一辈子。我在这里留下了三样东西：一份给土地的耐心，一份给邻居的善意，还有一个藏在池塘里的秘密。','去吧，慢慢来，不着急。','——爷爷'],onEnd:function(){S.story.intro=1;sv();msg('村长老陈就在家旁边，走近后按 E 和他打个招呼吧',6)}});
 }else msg('欢迎回来！',3);
