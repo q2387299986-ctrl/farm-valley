@@ -68,6 +68,11 @@ const CROPS={
 const SEEDKEYS=Object.keys(CROPS);
 const FISH=[{n:'鲫鱼',p:40,w:4},{n:'鲤鱼',p:70,w:3},{n:'鲈鱼',p:110,w:2},{n:'金鱼',p:160,w:1}];
 const LAKE={x:27,y:18,w:6,h:5};
+const DINER={x:28,y:5,w:4,h:3},BOARD={x:25,y:5},GH={x:29,y:9,w:7,h:5},CART={x:22,y:10,w:2,h:2};
+const MX=24*TS+16,MY=11*TS+24;
+function inRect(r,x,y){return x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h}
+function inGHIn(x,y){return x>GH.x&&x<GH.x+GH.w-1&&y>GH.y&&y<GH.y+GH.h-1}
+function inGHRing(x,y){return inRect(GH,x,y)&&!inGHIn(x,y)&&!(x==GH.x+3&&y==GH.y+GH.h-1)}
 const TREES=[[8,1],[9,1],[12,2],[0,7],[0,8],[19,5],[1,13],[12,14],[18,14],[13,6]];
 (function(){
   const have={};TREES.forEach(function(t){have[t[0]+','+t[1]]=1});
@@ -76,7 +81,8 @@ const TREES=[[8,1],[9,1],[12,2],[0,7],[0,8],[19,5],[1,13],[12,14],[18,14],[13,6]
     if(x<20&&y<15)continue;                       // 旧村庄区域保持不变
     if(have[x+','+y])continue;
     if(x>=LAKE.x-1&&x<=LAKE.x+LAKE.w&&y>=LAKE.y-1&&y<=LAKE.y+LAKE.h)continue;
-    if(y==4||(x==26&&y>=4&&y<=17))continue; // 小路留空
+    if(isPath(x,y))continue; // 小路留空
+    if(inRect({x:DINER.x-1,y:DINER.y-1,w:DINER.w+2,h:DINER.h+2},x,y)||inRect({x:GH.x-1,y:GH.y-1,w:GH.w+2,h:GH.h+2},x,y)||inRect({x:BOARD.x-1,y:BOARD.y-1,w:3,h:3},x,y)||inRect({x:CART.x-1,y:CART.y-1,w:CART.w+3,h:CART.h+2},x,y))continue;
     const edge=x>=WW-2||y>=WH-2,edge2=x>=WW-4||y>=WH-4;
     let r=h2(x,y,1);
     if(edge?r<.9:edge2?r<.35:(x>=26&&y>=15&&r<.07)||(r<.04))TREES.push([x,y]);
@@ -91,7 +97,7 @@ const LINES={
   3:['冬天地里种不了东西……去钓鱼吧。','好冷，我想喝热汤。','雪天真安静。']
 };
 
-function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{},story:{q1:0,q2:0,luluA:0},hp:100,gear:{sword:0,pick:0},mine:{best:0,boss:{}},cows:0,sheep:0,pigs:0,goats:0,ducks:0,pout:{},forage:[],pets:[],hay:0,fedN:0,milk:0,wool:0,love:{who:null,state:0,wed:0},bouquet:0,ring:0,rel:{lulu:{ev:{}},chuan:{fr:0,talked:false,gifted:false,ev:{},met:false}}}}
+function newState(){return{day:1,season:0,year:1,gold:200,energy:100,t:360,seeds:{turnip:5,strawberry:0,tomato:0,pumpkin:0},items:{},tiles:{},fr:0,talked:false,gifted:false,weather:0,chickens:0,eggs:0,muted:false,ms:{},story:{q1:0,q2:0,luluA:0},hp:100,gear:{sword:0,pick:0},mine:{best:0,boss:{}},cows:0,sheep:0,pigs:0,goats:0,ducks:0,pout:{},forage:[],gh:0,bb:[],merch:null,pets:[],hay:0,fedN:0,milk:0,wool:0,love:{who:null,state:0,wed:0},bouquet:0,ring:0,rel:{lulu:{ev:{}},chuan:{fr:0,talked:false,gifted:false,ev:{},met:false}}}}
 function load(){try{const s=localStorage.getItem('tinyvalley');return s?JSON.parse(s):null}catch(e){return null}}
 function save(){try{localStorage.setItem('tinyvalley',JSON.stringify(S))}catch(e){}}
 let S=load()||newState();
@@ -108,6 +114,7 @@ function solid(x,y){
   if(MINE.on)return mineSolid(x,y);
   if(x<0||y<0||x>=WW||y>=WH)return true;
   if(x>=LAKE.x&&x<LAKE.x+LAKE.w&&y>=LAKE.y&&y<LAKE.y+LAKE.h)return true;
+  if(inRect(DINER,x,y)||inRect(CART,x,y)||(x==BOARD.x&&y==BOARD.y)||(S.gh&&inGHRing(x,y)))return true;
   if(x>=1&&x<=3&&y<=2)return true;
   if(x>=15&&x<=18&&y<=2)return true;
   if(x>=14&&x<=18&&y>=8&&y<=12)return true;
@@ -185,7 +192,7 @@ function useTool(){
     if(t&&!t.c){
       const k=SEEDKEYS[selSeed],c=CROPS[k];
       if(S.seeds[k]<=0)msg('没有'+c.n+'种子了，去商店买吧',2);
-      else if(!c.s.includes(S.season))msg(c.n+'不适合在'+SEASONS[S.season]+'季种植',2.5);
+      else if(!c.s.includes(S.season)&&!(S.gh&&inGHIn(tx,ty)))msg(c.n+'不适合在'+SEASONS[S.season]+'季种植',2.5);
       else{t.c={k:k,age:0};S.seeds[k]--;S.energy-=1;burst(tx*TS+16,ty*TS+20,'#8bc34a',7);snd('plant')}
     }else if(!t)msg('先用锄头翻土',1.5);
   }else if(tool==3){
@@ -197,10 +204,14 @@ function interact(){
   if(MINE.on){mineInteract();return}
   if(npcNear()){talk();return}
   if(nearC()){talkChuan();return}
+  if(nearMerchant()){openMerchant();return}
   const an=nearAnimal();if(an){petAnimal(an);return}
   const oo=nearOther();if(oo){if(oo.id=='mayor')talkMayor();else talkFisher();return}
   const[tx,ty]=target();
   const fg=forageAt(tx,ty);if(fg){pickForage(fg);return}
+  if(inRect(CART,tx,ty)){cartInfo();return}
+  if(inRect(DINER,tx,ty)){openDiner();return}
+  if(tx==BOARD.x&&ty==BOARD.y){openBoard();return}
   if(tx==4&&ty==3){chestInteract();return}
   if(tx>=1&&tx<=3&&ty>=9&&ty<=10){openMineMenu();return}
   if(tx==2&&ty==2){fade={t:0,passed:false,applied:false};msg('晚安……',2);snd('sleep');return}
@@ -215,7 +226,7 @@ function coop(){
   else msg('今天的鸡蛋已经收完了（共 '+S.chickens+' 只小鸡）',2.5);
 }
 function checkMs(){
-  const list=[['harvest',S.ms.h,'第一次收获！你已经是个农夫了'],['g1000',S.gold>=1000,'金币突破 $1000，农场开始赚钱了'],['chick',S.chickens>=1,'你养了第一只小鸡'],['fr10',S.fr>=10,'你和阿鹿成了最好的朋友'],['g5000',S.gold>=5000,'金币突破 $5000，农场大亨！'],['barn',totAnimals()>=1,'牲畜棚里有了第一只牲畜'],['date',S.love.state>=1,'你开始了一段恋爱 💕'],['wed',S.love.state>=3,'你结婚了！祝福你们 💒'],['pet5',S.pets&&S.pets.some(function(p){return p.fr>=100}),'有一只牲畜和你成了最好的朋友 🐮'],['boss',!!(S.mine.boss&&S.mine.boss[10]),'你击败了矿洞里的史莱姆王']];
+  const list=[['harvest',S.ms.h,'第一次收获！你已经是个农夫了'],['g1000',S.gold>=1000,'金币突破 $1000，农场开始赚钱了'],['chick',S.chickens>=1,'你养了第一只小鸡'],['fr10',S.fr>=10,'你和阿鹿成了最好的朋友'],['g5000',S.gold>=5000,'金币突破 $5000，农场大亨！'],['barn',totAnimals()>=1,'牲畜棚里有了第一只牲畜'],['date',S.love.state>=1,'你开始了一段恋爱 💕'],['wed',S.love.state>=3,'你结婚了！祝福你们 💒'],['ev10',(S.story.evN||0)>=10,'经历了 10 件农场里的小事 🎲'],['trade',(S.story.merchSold||0)>=1000,'向旅行商人卖出了 $1000 的货 🛒'],['bb5',(S.story.bbDone||0)>=5,'完成了 5 个公告栏委托 📋'],['gh',!!S.gh,'温室建成了，四季都能种地 🌿'],['pet5',S.pets&&S.pets.some(function(p){return p.fr>=100}),'有一只牲畜和你成了最好的朋友 🐮'],['boss',!!(S.mine.boss&&S.mine.boss[10]),'你击败了矿洞里的史莱姆王']];
   for(const m of list)if(m[1]&&!S.ms[m[0]]){S.ms[m[0]]=1;msg('🏆 '+m[2],4.5);snd('win');break}
 }
 function sell(){
@@ -233,6 +244,7 @@ function renderShop(){
   }
   h+=`<div class="row"><span>小鸡 · $150（${S.chickens}/4）<br><small>每天下一个蛋，到鸡舍收取 · 鸡蛋 $35</small></span><button onclick="buy('chicken')">购买</button></div>`;
   for(const t of ATYPES){const a=ANI[t];h+=`<div class="row"><span>${a.n} · $${a.price}（${cntOf(t)}/${a.max}）<br><small>${a.desc} · 每天吃 1 份干草</small></span><button onclick="buy('${t}')">购买</button></div>`}
+  h+=S.gh?`<div class="row"><span>🌿 温室（已建成）<br><small>东边空地：四季可种、每天自动浇水</small></span></div>`:`<div class="row"><span>🏗 温室 · $2000 + 铁矿×10（持有 ${S.items.o_iron||0}）<br><small>在东边空地上建造：里面四季都能种，每天自动浇水</small></span><button onclick="buy('gh')">建造</button></div>`;
   h+=`<div class="row"><span>干草 ×5 · $50（持有 ${S.hay}）<br><small>到左下角牲畜棚按互动喂食</small></span><button onclick="buy('hay')">购买</button></div>`;
   h+=`<div class="row"><span>💐 花束 · $200（持有 ${S.bouquet}）<br><small>好感 8 以上，送给心上人表白</small></span><button onclick="buy('bouquet')">购买</button></div>`;
   h+=`<div class="row"><span>💍 订婚戒指 · $2000（持有 ${S.ring}）<br><small>交往后好感 10，用来求婚</small></span><button onclick="buy('ring')">购买</button></div>`;
@@ -247,6 +259,14 @@ function renderShop(){
 function buy(k){
   if(k=='bouquet'){if(S.gold>=200&&S.bouquet<9){S.gold-=200;S.bouquet++;snd('buy');renderShop()}return}
   if(k=='ring'){if(S.gold>=2000&&S.ring<3){S.gold-=2000;S.ring++;snd('buy');renderShop()}return}
+  if(k=='gh'){
+    if(S.gh)return;
+    if(S.gold<2000||(S.items.o_iron||0)<10){msg('金币或铁矿不够（$2000 + 铁矿×10）',3);return}
+    S.gold-=2000;takeItem('o_iron',10);S.gh=1;
+    for(const t in S.tiles){const q=t.split(',');if(inGHRing(+q[0],+q[1]))delete S.tiles[t]}
+    REACH=null;for(const m in MINIC)delete MINIC[m];
+    snd('win');msg('🌿 温室建成了！在村子东边的空地上',5);checkMs();sv();renderShop();return;
+  }
   if(ANI[k]){
     const a=ANI[k];
     if(cntOf(k)<a.max&&S.gold>=a.price){S.gold-=a.price;S[a.key]++;snd(a.sound);checkMs();sv();renderShop()}
@@ -265,18 +285,20 @@ function buy(k){
 function closeShop(){shopOpen=false;shopEl.style.display='none'}
 
 function endDay(passed){
-  for(const k in S.tiles){const t=S.tiles[k];if(t.c&&t.w)t.c.age++;t.w=0}
+  for(const k in S.tiles){const t=S.tiles[k],q=k.split(',');if(S.gh&&inGHIn(+q[0],+q[1]))t.w=1;if(t.c&&t.w)t.c.age++;t.w=0}
   S.day++;
   if(S.day>28){S.day=1;S.season++;if(S.season>3){S.season=0;S.year++}}
   let wilted=0;
-  for(const k in S.tiles){const t=S.tiles[k];if(t.c&&!CROPS[t.c.k].s.includes(S.season)){t.c=null;wilted++}}
+  for(const k in S.tiles){const t=S.tiles[k],q=k.split(',');if(t.c&&!CROPS[t.c.k].s.includes(S.season)&&!(S.gh&&inGHIn(+q[0],+q[1]))){t.c=null;wilted++}}
   const r=Math.random();
   S.weather=S.season==3?(r<.35?2:0):(r<(S.season==0?.3:.2)?1:0);
   if(S.weather==1)for(const k in S.tiles)S.tiles[k].w=1;
+  if(S.gh)for(const k in S.tiles){const q=k.split(',');if(inGHIn(+q[0],+q[1]))S.tiles[k].w=1}
   S.t=360;S.energy=passed?70:100;S.talked=false;S.gifted=false;
   S.eggs=Math.min(12,S.eggs+S.chickens);
   livestockDay();
   spawnForage();
+  genBB();
   S.rel.chuan.talked=false;S.rel.chuan.gifted=false;
   let spouseMsg='';
   if(S.love.state==3){
@@ -288,10 +310,12 @@ function endDay(passed){
   if(MINE.on){MINE.on=false;P.x=2*TS+16;P.y=3.5*TS+8;P.fx=0;P.fy=1}
   fishing=null;
   if(S.season==2&&S.day==16)queueDlg(festivalScript());
+  rollEvent();
   save();
   let m=S.day==1?('新的一季：'+SEASONS[S.season]+'季开始了！'):('第'+S.day+'天');
   if(wilted)m+='　有 '+wilted+' 株作物因换季枯萎了';
   else if(S.weather==1)m+='　今天下雨，作物自动浇水';
+  if(merchantDay())m+='　🛒 今天旅行商人来了（东边空地）';
   msg(m+spouseMsg,4);
 }
 
@@ -538,7 +562,7 @@ function updateFx(dt){
 }
 
 /* 场景绘制 */
-function isPath(x,y){return(x==2&&y==3)||(x==16&&y==3)||(y==4&&x>=2&&x<=WW-3)||(x==26&&y>=4&&y<=17)}
+function isPath(x,y){return(x==2&&y==3)||(x==16&&y==3)||(y==4&&x>=2&&x<=WW-3)||(x==26&&y>=4&&y<=17)||(y==8&&x>=26&&x<=30)||(y==14&&x>=26&&x<=32)||(y==11&&x>=24&&x<=25)}
 function drawGround(){
   const x0=Math.max(0,Math.floor(CAM.x/TS)),x1=Math.min(WW-1,Math.ceil((CAM.x+640)/TS)),y0=Math.max(0,Math.floor(CAM.y/TS)),y1=Math.min(WH-1,Math.ceil((CAM.y+480)/TS));
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
@@ -580,6 +604,344 @@ function drawTiles(){
     }
   }
 }
+/* ---------- 新建筑：餐馆 / 公告栏 / 温室 ---------- */
+const MENU=[{n:'煎蛋卷',p:40,e:35,h:15},{n:'蔬菜浓汤',p:70,e:55,h:25},{n:'丰盛套餐',p:130,e:100,h:50}];
+function openDiner(){
+  if(S.t<540||S.t>=1320){msg('阿梅餐馆的营业时间是 9:00–22:00',3);return}
+  if(!S.story.diner){
+    S.story.diner=1;
+    startDlg({name:'老板娘阿梅',lines:['欢迎光临！我是阿梅，这家餐馆是去年才开的。','种地、下矿都费体力，来我这儿吃一顿，保证你又有劲儿了。','饭菜现做现卖，价钱公道，常来啊！'],onEnd:function(){sv();snd('talk');renderDiner()}});
+    return;
+  }
+  renderDiner();
+}
+function renderDiner(){
+  let h='<h2>🍲 阿梅餐馆</h2><div>金币：$'+S.gold+'　体力 '+Math.floor(S.energy)+'/100　生命 '+Math.floor(S.hp)+'/100</div>';
+  MENU.forEach(function(d,i){h+='<div class="row"><span>'+d.n+' · $'+d.p+'<br><small>体力 +'+d.e+'，生命 +'+d.h+'</small></span><button onclick="eat('+i+')">点单</button></div>'});
+  h+='<div style="text-align:right"><button onclick="closeShop()">离开</button></div>';
+  shopEl.innerHTML=h;shopEl.style.display='block';shopOpen=true;
+}
+function eat(i){
+  const d=MENU[i];
+  if(S.gold<d.p){msg('阿梅：这……钱好像不太够哦',2.5);return}
+  if(S.energy>=100&&S.hp>=100){msg('你已经很饱很有精神了',2.5);return}
+  S.gold-=d.p;S.energy=Math.min(100,S.energy+d.e);S.hp=Math.min(100,S.hp+d.h);
+  snd('buy');burst(P.x,P.y-20,'#ffd9a0',8);floater(P.x,P.y-44,'体力 +'+d.e);
+  renderDiner();
+}
+const BBWHO=['阿鹿','阿川','村长老陈','渔夫老周','阿梅'];
+function genBB(){
+  const pool=[];
+  for(const k in CROPS)if(CROPS[k].s.includes(S.season))pool.push('h_'+k);
+  if(S.chickens>0)pool.push('e_egg');
+  pool.push('f_0','f_1','f_2','o_copper','m_mush','m_berry','s_goo');
+  if(S.cows>0)pool.push('m_milk');
+  if(S.sheep>0)pool.push('m_wool');
+  if(S.ducks>0)pool.push('m_duck');
+  S.bb=[];
+  for(let i=0;i<3&&pool.length;i++){
+    const k=pool.splice(Math.random()*pool.length|0,1)[0],pr=itemPrice(k);
+    const n=pr<=50?3+(Math.random()*4|0):pr<=120?2+(Math.random()*3|0):1+(Math.random()*3|0);
+    const gold=Math.round(pr*n*(1.4+Math.random()*.4)/5)*5;
+    S.bb.push({k:k,n:n,gold:gold,who:BBWHO[Math.random()*BBWHO.length|0],done:false});
+  }
+}
+function openBoard(){
+  if(!S.bb||!S.bb.length)genBB();
+  renderBoard();
+}
+function renderBoard(){
+  let h='<h2>📋 公告栏</h2><div>今天的委托（明天会更新）</div>';
+  S.bb.forEach(function(b,i){
+    const have=S.items[b.k]||0;
+    h+='<div class="row"><span>'+b.who+'：需要 '+itemName(b.k)+' ×'+b.n+'<br><small>报酬 $'+b.gold+(b.done?'':'　（持有 '+have+'）')+'</small></span>'+(b.done?'<span>✔ 已完成</span>':'<button onclick="deliverBB('+i+')">交付</button>')+'</div>';
+  });
+  h+='<div style="text-align:right"><button onclick="closeShop()">关闭</button></div>';
+  shopEl.innerHTML=h;shopEl.style.display='block';shopOpen=true;
+}
+function deliverBB(i){
+  const b=S.bb[i];
+  if(!b||b.done)return;
+  if((S.items[b.k]||0)<b.n){msg('东西还不够：'+itemName(b.k)+' ×'+b.n,2.5);return}
+  takeItem(b.k,b.n);S.gold+=b.gold;b.done=true;
+  S.story.bbDone=(S.story.bbDone||0)+1;
+  let extra='';
+  if(b.who=='阿鹿'){addFr('lulu',1);extra='，阿鹿好感 +1'}
+  else if(b.who=='阿川'){addFr('chuan',1);extra='，阿川好感 +1'}
+  snd('win');floater(P.x,P.y-44,'+$'+b.gold);
+  msg('委托完成！获得 $'+b.gold+extra,3.5);
+  checkMs();sv();renderBoard();
+}
+const DINERC={};
+function dinerSprite(sn){
+  if(DINERC[sn])return DINERC[sn];
+  const k=cvs(64,48),g=k.getContext('2d'),R=mkR(g);
+  const rc=sn==3?['#e8eef2','#cfd8de','#aebbc4']:['#c8742f','#b0612a','#8a4a20'];
+  for(let y=2;y<22;y+=4){R(0,y,64,4,((y/4)|0)%2?rc[0]:rc[1]);R(0,y+3,64,1,rc[2])}
+  R(0,0,64,2,sn==3?'#ffffff':'#e0903f');
+  R(2,22,60,26,'#f0dcb0');for(let x=2;x<62;x+=6)R(x,22,1,26,'#d8c08a');
+  R(2,45,60,3,'#8a8a8a');
+  R(13,5,38,14,O_);R(14,6,36,12,'#fff2d0');
+  for(let x=0;x<64;x+=4){const a=(x/4)%2;R(x,22,4,7,a?'#f5f5f5':'#d8602a');R(x,29,4,1,a?'#d8d8d8':'#a8431a')}
+  R(6,32,16,11,O_);R(7,33,14,9,'#ffe9a8');R(14,33,1,9,'#c9a24a');R(7,37,14,1,'#c9a24a');
+  R(42,32,16,11,O_);R(43,33,14,9,'#ffe9a8');R(50,33,1,9,'#c9a24a');R(43,37,14,1,'#c9a24a');
+  R(26,31,12,15,O_);R(27,32,10,14,'#8a5a2a');R(27,32,10,2,'#a8743a');R(34,39,2,2,'#ffd54f');
+  R(29,35,4,4,'#ffe9a8');
+  DINERC[sn]=k;return k;
+}
+let BOARDSPR=null;
+function boardSprite(){
+  if(BOARDSPR)return BOARDSPR;
+  const k=cvs(16,16),g=k.getContext('2d'),R=mkR(g);
+  R(3,11,2,5,'#6a4a2a');R(11,11,2,5,'#6a4a2a');
+  R(1,1,14,11,O_);R(2,2,12,9,'#b5834a');R(2,2,12,1,'#c99a5b');
+  R(3,3,5,6,'#fffbe6');R(4,4,3,1,'#9a8a6a');R(4,6,3,1,'#9a8a6a');
+  R(9,4,4,4,'#e8f4ff');R(10,5,2,1,'#7aa0c0');
+  R(5,3,1,1,'#e53935');R(10,4,1,1,'#e53935');
+  BOARDSPR=k;return k;
+}
+function drawGHFloor(){
+  if(!S.gh)return;
+  for(let y=GH.y+1;y<GH.y+GH.h-1;y++)for(let x=GH.x+1;x<GH.x+GH.w-1;x++){
+    ctx.fillStyle=((x+y)%2)?'#c9b48a':'#bfa97e';ctx.fillRect(x*TS,y*TS,TS,TS);
+  }
+  const dx=(GH.x+3)*TS,dy=(GH.y+GH.h-1)*TS;
+  ctx.fillStyle='#bfa97e';ctx.fillRect(dx,dy,TS,TS);
+}
+function drawNewBuildings(){
+  ctx.drawImage(dinerSprite(S.season),DINER.x*TS,DINER.y*TS,128,96);
+  text('餐馆',(DINER.x+2)*TS,DINER.y*TS+30,'#5b3a1a',13,'center');
+  ctx.drawImage(boardSprite(),BOARD.x*TS,BOARD.y*TS,TS,TS);
+  if(S.bb&&S.bb.some(function(b){return !b.done})){
+    const b=Math.sin(performance.now()/250)*2;
+    text('!',BOARD.x*TS+16,BOARD.y*TS-2+b,'#ffeb3b',18,'center');
+  }
+  const x0=GH.x*TS,y0=GH.y*TS,w=GH.w*TS,h=GH.h*TS;
+  if(!S.gh){
+    for(const c of[[0,0],[w-6,0],[0,h-14],[w-6,h-14]]){rr(x0+c[0],y0+c[1],6,14,'#6a4a2a');rr(x0+c[0],y0+c[1],6,3,'#a8743a')}
+    ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle='rgba(255,247,194,.7)';ctx.lineWidth=2;ctx.strokeRect(x0+3,y0+3,w-6,h-6);ctx.restore();
+    panel(x0+w/2-62,y0-24,124,22);text('温室建设用地',x0+w/2,y0-8,'#fff7c2',12,'center');
+    return;
+  }
+  const t=performance.now()/1000;
+  ctx.fillStyle='rgba(200,240,255,.12)';ctx.fillRect(x0+TS,y0+TS,w-2*TS,h-2*TS);
+  for(let y=GH.y;y<GH.y+GH.h;y++)for(let x=GH.x;x<GH.x+GH.w;x++){
+    if(!inGHRing(x,y))continue;
+    const px=x*TS,py=y*TS,top=(y==GH.y);
+    ctx.fillStyle=top?'rgba(120,184,208,.8)':'rgba(168,216,232,.6)';ctx.fillRect(px,py,TS,TS);
+    ctx.strokeStyle='#eef8fb';ctx.lineWidth=1;ctx.strokeRect(px+.5,py+.5,TS-1,TS-1);
+    if(Math.sin(t*1.5+x*1.3+y*.7)>.96){rr(px+8,py+6,3,3,'#ffffff')}
+  }
+  ctx.strokeStyle='#8a6a48';ctx.lineWidth=3;ctx.strokeRect(x0+1.5,y0+1.5,w-3,h-3);
+  const dx=(GH.x+3)*TS,dy=(GH.y+GH.h-1)*TS;
+  rr(dx,dy,4,TS,'#8a6a48');rr(dx+TS-4,dy,4,TS,'#8a6a48');rr(dx,dy,TS,4,'#8a6a48');
+  text('温室',x0+w/2,y0-6,'#e8f4e0',12,'center');
+}
+/* ---------- 随机事件 ---------- */
+let EVOPT=[];
+function addN(k,n){S.items[k]=(S.items[k]||0)+n}
+function cropsOut(){const r=[];for(const k in S.tiles){const q=k.split(',');if(S.tiles[k].c&&!(S.gh&&inGHIn(+q[0],+q[1])))r.push(k)}return r}
+function seasonCrops(){return Object.keys(CROPS).filter(function(k){return CROPS[k].s.includes(S.season)})}
+// kind:'night' 立即生效；'choice' 对话后弹出选项。run() 对 night 返回对话行；对 choice 返回 {lines,opts}
+const RANDEV=[
+  {id:'meteor',w:3,kind:'night',ok:function(){return true},run:function(){
+    const n=1+(Math.random()*2|0);addN('o_gold',n);
+    return['夜里，一道亮光划破夜空，轰的一声落在了田边。','清晨你跑去一看，是一块还带着余温的陨石。敲开后，里面竟是金灿灿的矿石！（金矿 ×'+n+'）']}},
+  {id:'basket',w:4,kind:'night',ok:function(){return true},run:function(){
+    let k,nm;
+    if(S.season!=3&&seasonCrops().length){const c=seasonCrops()[Math.random()*seasonCrops().length|0];k='h_'+c;nm=CROPS[c].n}
+    else{k='m_mush';nm='蘑菇'}
+    addN(k,3);
+    return['一大早，门口放着一只竹篮，上面压着一张字条：','“看你一个人种地辛苦，给你一点自家种的。——邻居”','篮子里是 '+nm+' ×3。']}},
+  {id:'rainbow',w:3,kind:'night',ok:function(){return S.weather!=2&&Object.keys(S.tiles).some(function(k){return S.tiles[k].c})},run:function(){
+    for(const k in S.tiles){const t=S.tiles[k];if(t.c)t.c.age++}
+    return['昨夜下过一场小雨，清晨天边挂起了一道彩虹。','田里的作物像是喝饱了水，一夜之间长高了一截。（所有作物成长 +1 天）']}},
+  {id:'moon',w:3,kind:'night',ok:function(){return totAnimals()>0},run:function(){
+    ensurePets();S.pets.forEach(function(p){p.fr=Math.min(100,p.fr+5)});
+    return['今夜月色特别好，牲畜棚里传来轻轻的哼唧声。','你过去看了一眼，动物们挤在一起睡得正香，看起来心情很不错。（所有牲畜好感 +5）']}},
+  {id:'rabbit',w:2,kind:'night',ok:function(){return S.season!=3&&cropsOut().length>=3},run:function(){
+    const ks=cropsOut(),n=Math.min(2,ks.length);
+    for(let i=0;i<n;i++){const j=Math.random()*ks.length|0;S.tiles[ks[j]].c=null;ks.splice(j,1)}
+    return['清晨你发现田里留下了一串小小的爪印。','一只野兔趁夜溜进来，啃掉了几株幼苗……（作物 -'+n+'）','看来得多留心田里的动静了。']}},
+  {id:'storm',w:2,kind:'night',ok:function(){return S.season!=3},run:function(){
+    S.energy=Math.max(50,S.energy-20);
+    return['夜里狂风大作，雷声一阵接一阵，你被吵得没睡好。','今天有点没精神。（体力 -20）']}},
+  {id:'eggs',w:2,kind:'night',ok:function(){return S.chickens>0},run:function(){
+    S.eggs=Math.min(12,S.eggs+3);
+    return['今天鸡舍里热闹得很，母鸡们像是商量好了一起下蛋。','你捡到了好多蛋！（鸡蛋 +3）']}},
+  {id:'fish',w:2,kind:'night',ok:function(){return true},run:function(){
+    addN('f_2',1);
+    return['渔夫老周拎着一条大鱼来敲门。','“今天运气好，一网上来好几条，吃不完，送你一条。”','（获得 鲈鱼 ×1）']}},
+  {id:'wallet',w:3,kind:'choice',ok:function(){return true},run:function(){return{
+    lines:['路边的草丛里躺着一个鼓鼓的钱包，里面有 $120。','钱包里还塞着一张字条，上面写着"老陈"。','……看起来是村长的。'],
+    opts:[
+      {label:'送还给村长',desc:'村长一定会感谢你',fn:function(){S.gold+=40;msg('村长老陈：“好孩子！这是一点心意。”（+$40）',4);snd('win')}},
+      {label:'悄悄收下',desc:'+$120，但心里有点过意不去',fn:function(){S.gold+=120;msg('你把钱包收进了口袋……希望没人发现。（+$120）',4);snd('coin')}}
+    ]}}},
+  {id:'peddler',w:3,kind:'choice',ok:function(){return true},run:function(){
+    const ks=Object.keys(CROPS),k=ks[Math.random()*ks.length|0];
+    return{lines:['一个背着大包袱的行商路过农场，神神秘秘地凑了过来。','“我这儿有一袋外地来的种子，只要 $60，保证不亏！”'],
+    opts:[
+      {label:'买下神秘种子',desc:'$60，随机一种作物种子 ×6（不分季节）',en:S.gold>=60,fn:function(){S.gold-=60;S.seeds[k]+=6;msg('你买下了 '+CROPS[k].n+'种子 ×6',4);snd('buy')}},
+      {label:'谢绝',desc:'摆摆手让他走',fn:function(){msg('行商耸耸肩，背着包袱走远了。',3)}}
+    ]}}},
+  {id:'lulu',w:3,kind:'choice',ok:function(){return true},run:function(){return{
+    lines:[['阿鹿','哎呀，你来得正好！面包房的面粉快用完了，我想去隔壁镇进一点货……'],['阿鹿','可是钱不太够。你能借我 $40 吗？我一定记着你的好！']],
+    opts:[
+      {label:'借给她 $40',desc:'阿鹿好感 +2',en:S.gold>=40,fn:function(){S.gold-=40;addFr('lulu',2);msg('阿鹿：谢谢你！下次给你留最大的那块面包！（阿鹿好感 +2）',4.5);snd('talk')}},
+      {label:'下次吧',desc:'今天手头也紧',fn:function(){msg('阿鹿：没关系，我再想想办法。',3)}}
+    ]}}},
+  {id:'chuan',w:2,kind:'choice',ok:function(){return S.rel.chuan.met},run:function(){
+    const have=S.items.o_copper||0;
+    return{lines:[['阿川','……打扰了。我的镐头在矿洞里磨坏了。'],['阿川','能不能……给我两块铜矿？我可以付钱。']],
+    opts:[
+      {label:'给他铜矿 ×2',desc:'阿川付 $90，好感 +2（持有 '+have+'）',en:have>=2,fn:function(){takeItem('o_copper',2);S.gold+=90;addFr('chuan',2);msg('阿川：……谢谢。（收到 $90，阿川好感 +2）',4.5);snd('talk')}},
+      {label:'不给',desc:'我自己也要用',fn:function(){msg('阿川：……好。打扰了。',3)}}
+    ]}}}
+];
+function pickEvent(){
+  const cand=RANDEV.filter(function(e){return e.id!=S.story.lastEv&&e.ok()});
+  const tot=cand.reduce(function(a,e){return a+e.w},0);
+  if(!tot)return null;
+  let r=Math.random()*tot;
+  for(const e of cand){r-=e.w;if(r<=0)return e}
+  return cand[cand.length-1];
+}
+function openEvChoice(opts){
+  EVOPT=opts;
+  let h='<h2>要怎么办呢？</h2>';
+  opts.forEach(function(o,i){
+    const en=o.en!==false;
+    h+='<div class="row"><span>'+o.label+'<br><small>'+o.desc+'</small></span><button '+(en?'':'disabled style="opacity:.4"')+' onclick="evPick('+i+')">选择</button></div>';
+  });
+  shopEl.innerHTML=h;shopEl.style.display='block';shopOpen=true;
+}
+function evPick(i){
+  const o=EVOPT[i];if(!o||o.en===false)return;
+  closeShop();o.fn();checkMs();sv();
+}
+function runEvent(e){
+  S.story.lastEv=e.id;S.story.evN=(S.story.evN||0)+1;
+  const r=e.run();
+  if(e.kind=='night')queueDlg({name:'',lines:r,onEnd:function(){sv();snd('quest')}});
+  else queueDlg({name:'',lines:r.lines,onEnd:function(){snd('quest');openEvChoice(r.opts)}});
+}
+function rollEvent(){
+  if(S.year==1&&S.season==0&&S.day<=2)return;           // 开局两天不触发
+  if(S.season==2&&S.day==16)return;                     // 丰收祭当天
+  if(DQ.length)return;                                  // 已有婚礼等剧情排队
+  if(Math.random()>=.4)return;
+  const e=pickEvent();if(e)runEvent(e);
+}
+/* ---------- 旅行商人 ---------- */
+const MRP=makePerson({skin:'#e0b48a',hair:'#8a8a8a',shirt:'#7a4aa0',shirtD:'#5a3278',pants:'#3a2a4a',shoe:'#2a1a0a',hat:'#b8402a',band:'#7a2a1a'});
+const MDAYS=[5,7,12,14,19,21,26,28];
+function merchantDay(){return MDAYS.indexOf(S.day)>=0}
+function merchantHere(){return merchantDay()&&S.t>=480&&S.t<1200}
+function nearMerchant(){return !MINE.on&&!dlg&&merchantHere()&&Math.hypot(P.x-MX,P.y-MY)<52}
+function nextMerchantDay(){for(const d of MDAYS)if(d>S.day)return d;return null}
+function cartInfo(){
+  if(merchantHere()){openMerchant();return}
+  if(merchantDay())msg(S.t<480?'旅行商人还没到，早上 8:00 以后再来':'旅行商人已经收摊走了',3);
+  else{const n=nextMerchantDay();msg('旅行商人的货车停在这儿。他每月 5、7、12、14、19、21、26、28 日来摆摊'+(n?'（下次：'+n+' 日）':'（下个月再来）'),4.5)}
+}
+const r5=function(v){return Math.round(v/5)*5};
+function genMerch(){
+  const key=S.year+'-'+S.season+'-'+S.day;
+  if(S.merch&&S.merch.key==key)return;
+  const ck=Object.keys(CROPS),k1=ck[Math.random()*ck.length|0],k2=ck[Math.random()*ck.length|0];
+  const pool=[
+    {t:'seed',k:k1,label:CROPS[k1].n+'种子 ×5（不分季节）',price:r5(CROPS[k1].seed*5*1.2),left:2},
+    {t:'seed',k:k2,label:CROPS[k2].n+'种子 ×5（不分季节）',price:r5(CROPS[k2].seed*5*1.2),left:2},
+    {t:'hay',label:'干草 ×10',price:80,left:2},
+    {t:'bouquet',label:'💐 花束（比杂货铺便宜）',price:150,left:1},
+    {t:'ring',label:'💍 订婚戒指（比杂货铺便宜）',price:1500,left:1},
+    {t:'o_iron',label:'铁矿 ×3',price:150,left:2,n:3},
+    {t:'o_copper',label:'铜矿 ×5',price:90,left:2,n:5},
+    {t:'o_gold',label:'金矿 ×2',price:280,left:1,n:2}
+  ];
+  const stock=[];
+  while(stock.length<5&&pool.length){
+    const it=pool.splice(Math.random()*pool.length|0,1)[0];
+    if(it.t=='seed'&&stock.some(function(o){return o.t=='seed'&&o.k==it.k}))continue;
+    stock.push(it);
+  }
+  S.merch={key:key,stock:stock};
+}
+function openMerchant(){
+  if(!S.story.merch){
+    S.story.merch=1;
+    startDlg({name:'旅行商人老赵',lines:['哟，新面孔！我叫老赵，走南闯北做点小买卖。','我每个月来这儿摆几天摊：外地的种子、便宜的矿石，还有些别处买不到的小东西。','你手里要是有多余的货，我也按好价钱收。常来看看！'],onEnd:function(){sv();snd('talk');renderMerchant()}});
+    return;
+  }
+  renderMerchant();
+}
+function renderMerchant(){
+  genMerch();
+  let h='<h2>🛒 旅行商人老赵</h2><div>金币：$'+S.gold+'　今天的货（每天不同）</div>';
+  S.merch.stock.forEach(function(it,i){
+    h+='<div class="row"><span>'+it.label+' · $'+it.price+'<br><small>'+(it.left>0?'剩 '+it.left+' 份':'已售完')+'</small></span>'+(it.left>0?'<button onclick="buyM('+i+')">购买</button>':'<span>—</span>')+'</div>';
+  });
+  const ik=Object.keys(S.items).filter(function(k){return S.items[k]>0});
+  h+='<div style="margin-top:8px">高价收购（按市价 130%）</div>';
+  if(!ik.length)h+='<div><small>背包是空的</small></div>';
+  for(const k of ik){
+    const pr=Math.round(itemPrice(k)*1.3);
+    h+='<div class="row"><span>'+itemName(k)+' ×'+S.items[k]+'<br><small>每个 $'+pr+'</small></span><button onclick="sellM(\''+k+'\')">全部卖出 $'+pr*S.items[k]+'</button></div>';
+  }
+  h+='<div style="text-align:right"><button onclick="closeShop()">离开</button></div>';
+  shopEl.innerHTML=h;shopEl.style.display='block';shopOpen=true;
+}
+function buyM(i){
+  const it=S.merch&&S.merch.stock[i];
+  if(!it||it.left<=0)return;
+  if(S.gold<it.price){msg('老赵：客官，钱不够啊',2.5);return}
+  if(it.t=='bouquet'&&S.bouquet>=9){msg('你已经拿不下更多花束了',2.5);return}
+  if(it.t=='ring'&&S.ring>=3){msg('你已经有戒指了',2.5);return}
+  if(it.t=='hay'&&S.hay>=60){msg('干草已经堆满了',2.5);return}
+  S.gold-=it.price;it.left--;
+  if(it.t=='seed')S.seeds[it.k]+=5;
+  else if(it.t=='hay')S.hay=Math.min(60,S.hay+10);
+  else if(it.t=='bouquet')S.bouquet++;
+  else if(it.t=='ring')S.ring++;
+  else{S.items[it.t]=(S.items[it.t]||0)+it.n}
+  snd('buy');sv();renderMerchant();
+}
+function sellM(k){
+  const n=S.items[k]||0;if(n<=0)return;
+  const g=Math.round(itemPrice(k)*1.3)*n;
+  takeItem(k,n);S.gold+=g;S.story.merchSold=(S.story.merchSold||0)+g;
+  snd('coin');floater(P.x,P.y-44,'+$'+g);checkMs();sv();renderMerchant();
+}
+let CARTSPR=null;
+function cartSprite(){
+  if(CARTSPR)return CARTSPR;
+  const k=cvs(32,32),g=k.getContext('2d'),R=mkR(g);
+  R(2,14,26,3,O_);R(3,13,24,12,O_);R(4,14,22,10,'#9a6a3a');R(4,14,22,2,'#b5834a');
+  for(let x=7;x<26;x+=5)R(x,16,1,8,'#7a4a24');
+  for(let x=2;x<28;x+=4){const a=(x/4)%2;R(x,3,4,10,a?'#f5f5f5':'#8a4ab8');R(x,12,4,2,a?'#d8d8d8':'#6a2a98')}
+  R(1,3,28,1,O_);
+  R(28,20,3,2,'#6a4a2a');R(30,19,1,4,'#6a4a2a');
+  R(5,22,8,8,O_);R(6,23,6,6,'#7a4a24');R(8,25,2,2,'#c9a24a');
+  R(18,22,8,8,O_);R(19,23,6,6,'#7a4a24');R(21,25,2,2,'#c9a24a');
+  R(7,18,3,3,'#e53935');R(12,18,3,3,'#ffb300');R(19,18,3,3,'#8bc34a');
+  CARTSPR=k;return k;
+}
+function drawMerchantEntities(list){
+  list.push({y:(CART.y+CART.h)*TS,f:function(){
+    ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.ellipse(CART.x*TS+32,(CART.y+CART.h)*TS-4,32,7,0,0,7);ctx.fill();
+    ctx.drawImage(cartSprite(),CART.x*TS,CART.y*TS,64,64);
+  }});
+  if(merchantHere()){
+    list.push({y:MY,f:function(){
+      ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(MX,MY+3,10,4,0,0,7);ctx.fill();
+      const dx=P.x-MX,dy=P.y-MY,di=Math.abs(dx)>Math.abs(dy)?(dx<0?2:3):(dy<0?1:0);
+      ctx.drawImage(MRP[di][0],MX-12,MY-37,24,40);
+      if(Math.hypot(dx,dy)<52)text('旅行商人',MX,MY-44,'#fff7c2',11,'center');
+      else text('🛒',MX,MY-46+Math.sin(performance.now()/220)*2,'#fff',16,'center');
+    }});
+  }
+}
 /* ---------- 野外采集 ---------- */
 const FORSPR={};
 (function(){
@@ -604,7 +966,7 @@ function spawnForage(){
   const n=S.season==3?5:12;
   for(let i=0;i<n*6&&S.forage.length<n;i++){
     const x=20+Math.floor(Math.random()*(WW-22)),y=2+Math.floor(Math.random()*(WH-4));
-    if(solid(x,y)||!reachable().has(x+','+y)||isPath(x,y)||S.tiles[x+','+y]||forageAt(x,y))continue;
+    if(solid(x,y)||inRect(GH,x,y)||inRect(CART,x,y)||!reachable().has(x+','+y)||isPath(x,y)||S.tiles[x+','+y]||forageAt(x,y))continue;
     S.forage.push({x:x,y:y,k:S.season==2||S.season==3||Math.random()<.4?'m_mush':'m_berry'});
   }
 }
@@ -652,6 +1014,7 @@ function drawWorld(){
       ctx.drawImage(treeSprite(S.season),x*TS+16-24,y*TS+32-64,48,64);
     }});
   }
+  drawMerchantEntities(list);
   for(const c of CH)list.push({y:c.y,f:function(){drawChicken(c)}});
   for(const o of OT)list.push({y:o.y,f:function(){drawOT(o)}});
   for(const a of AN)list.push({y:a.y,f:function(){drawAnimal(a)}});
@@ -719,6 +1082,7 @@ function drawMini(){
   if(S.forage)for(const f of S.forage){ctx.fillStyle='#ffe066';ctx.fillRect(x0+f.x*z,y0+f.y*z,z,z)}
   const dot=function(px,py,c,r){const dx=x0+px/TS*z,dy=y0+py/TS*z;ctx.fillStyle='#000';ctx.fillRect(dx-r-1,dy-r-1,2*r+2,2*r+2);ctx.fillStyle=c;ctx.fillRect(dx-r,dy-r,2*r,2*r)};
   dot(N.x,N.y,'#ff8fb1',z>2?2:1);dot(C.x,C.y,'#6ad06a',z>2?2:1);
+  if(merchantHere())dot(MX,MY,'#c58aff',z>2?2:1);
   ctx.strokeStyle='rgba(255,255,255,.75)';ctx.lineWidth=1;
   ctx.strokeRect(x0+CAM.x/TS*z+.5,y0+CAM.y/TS*z+.5,640/TS*z-1,480/TS*z-1);
   if(((performance.now()/350)|0)%2==0)dot(P.x,P.y,'#ffffff',z>2?3:2);else dot(P.x,P.y,'#e53935',z>2?3:2);
@@ -755,8 +1119,12 @@ function drawHUD(){
   else if(MINE.on)hint=mineHint();
   else if(npcNear())hint='[E] 聊天   [G] 送礼';
   else if(nearC())hint='[E] 和阿川聊天   [G] 送礼';
+  else if(nearMerchant())hint='[E] 和旅行商人交易';
+  else if(inRect(CART,tx,ty))hint='[E] 旅行商人的货车';
   else if(nearAnimal()){const a=nearAnimal();hint='[E] 摸摸'+a.pet.name+(a.pet.pet?'（今天摸过了）':'')}
   else if(nearOther())hint='[E] 和'+nearOther().name+'聊天';
+  else if(inRect(DINER,tx,ty))hint='[E] 阿梅餐馆（9:00–22:00）';
+  else if(tx==BOARD.x&&ty==BOARD.y)hint='[E] 公告栏';
   else if(forageAt(tx,ty))hint='[E] 采集 '+ITEMX[forageAt(tx,ty).k][0];
   else if(tx==4&&ty==3)hint='[E] 旧木箱';
   else if(tx>=1&&tx<=3&&ty>=9&&ty<=10)hint='[E] 进入矿洞';
@@ -781,7 +1149,7 @@ function draw(){
   if(MINE.on){drawMineFrame();return}
   updateCam();
   ctx.save();ctx.translate(-Math.round(CAM.x),-Math.round(CAM.y));
-  drawGround();drawPond();drawTiles();drawBuildings();drawForage();drawFest();
+  drawGround();drawPond();drawGHFloor();drawTiles();drawBuildings();drawNewBuildings();drawForage();drawFest();
   if(!shopOpen){
     const tg=target(),tx=tg[0],ty=tg[1],a=.55+Math.sin(performance.now()/200)*.25;
     ctx.strokeStyle='rgba(255,255,255,'+a+')';ctx.lineWidth=2;ctx.strokeRect(tx*TS+2,ty*TS+2,TS-4,TS-4);
@@ -2110,6 +2478,7 @@ function loop(now){
 }
 placeSpouse();
 if(!S.forage||!S.forage.length)spawnForage();
+if(!S.bb||!S.bb.length)genBB();
 if(!S.story.intro){
   startDlg({name:'爷爷的信',lines:['亲爱的孩子：','当你读到这封信，我大概已经去很远的地方钓鱼了。','农场不大，但它陪了我一辈子。我在这里留下了三样东西：一份给土地的耐心，一份给邻居的善意，还有一个藏在池塘里的秘密。','去吧，慢慢来，不着急。','——爷爷'],onEnd:function(){S.story.intro=1;sv();msg('村长老陈就在家旁边，走近后按 E 和他打个招呼吧',6)}});
 }else msg('欢迎回来！',3);
